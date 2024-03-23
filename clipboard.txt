@@ -1,0 +1,105 @@
+
+    // This does the uvs and bius computations in avx2
+    // using simd on uvs and bius was slower
+    cv::Point3f evalBezierSurfaceCubicPointMatSimd3(const cv::Mat& controlPointsZs, float u, float v) 
+    {
+        __m256 xsums = _mm256_set1_ps(0.0f);
+        __m256 ysums = _mm256_set1_ps(0.0f);
+        __m256 zsums = _mm256_set1_ps(0.0f);
+        __m256 thirds = _mm256_set_ps(THIRDS[0], THIRDS[1], THIRDS[2], THIRDS[3], THIRDS[0], THIRDS[1], THIRDS[2], THIRDS[3]);
+
+        //__m256i biuSelectionMask0 = _mm256_setr_epi32(2, 2, 2, 2, 3, 3, 3, 3);
+        //__m256i biuSelectionMask1 = _mm256_setr_epi32(4, 4, 4, 4, 5, 5, 5, 5);
+
+        float u1 = 1.0f - u;
+        float v1 = 1.0f - v;
+        //float v13 = v1 * v1 * v1;
+        //float v12 = 3 * v * v1 * v1;
+        //float v21 = 3 * v * v * v1;
+        //float v3 = v * v * v;
+
+        // Compute coeffs and biu's in one register
+        // (v13, v12, v21, v3 and bius)
+        __m256 uvs0 = _mm256_set_ps(1.0f, 3.0f, 3.0f, 1.0f, 1.0f, 3.0f, 3.0f, 1.0f);
+        __m256 uvs1 = _mm256_set_ps(v1, v, v, v, u1, u, u, u);
+        __m256 uvs2 = _mm256_set_ps(v1, v1, v, v, u1, u1, u, u);
+        __m256 uvs3 = _mm256_set_ps(v1, v1, v1, v, u1, u1, u1, u);
+        __m256 uvs_and_bius = _mm256_mul_ps(uvs0, uvs1);
+        uvs_and_bius = _mm256_mul_ps(uvs_and_bius, uvs2);
+        uvs_and_bius = _mm256_mul_ps(uvs_and_bius, uvs3);
+
+        //__m256 coeffs1 = _mm256_set_ps(v13, v12, v21, v3, v13, v12, v21, v3);
+        __m256 coeffs = _mm256_permute2f128_ps(uvs_and_bius, uvs_and_bius, 0x11);
+
+        {
+            int i1 = 0;
+            int i2 = 1;
+
+            const float* zi1 = controlPointsZs.ptr<float>(i1, 0);
+            const float* zi2 = controlPointsZs.ptr<float>(i2, 0);
+            __m256 zs = _mm256_set_ps(zi1[0], zi1[1], zi1[2], zi1[3], zi2[0], zi2[1], zi2[2], zi2[3]);
+
+            float biu1 = u1 * u1 * u1;
+            float biu2 = 3 * u * u1 * u1;
+            __m256 bius = _mm256_set_ps(biu1, biu1, biu1, biu1, biu2, biu2, biu2, biu2);
+            //__m256 bius = _mm256_permutevar8x32_ps(uvs_and_bius, biuSelectionMask0);
+
+            __m256 thirdsi = _mm256_set_ps(THIRDS[i1], THIRDS[i1], THIRDS[i1], THIRDS[i1], THIRDS[i2], THIRDS[i2], THIRDS[i2], THIRDS[i2]);
+
+            __m256 p1 = _mm256_mul_ps(bius, coeffs);
+            __m256 px1 = _mm256_mul_ps(p1, thirds);
+            __m256 py1 = _mm256_mul_ps(p1, thirdsi);
+            __m256 pz1 = _mm256_mul_ps(p1, zs);
+
+            xsums = _mm256_add_ps(xsums, px1);
+            ysums = _mm256_add_ps(ysums, py1);
+            zsums = _mm256_add_ps(zsums, pz1);
+        }
+
+        // Unroll change from 50 to 38 ms
+        {
+            int i1 = 2;
+            int i2 = 3;
+
+            const float* zi1 = controlPointsZs.ptr<float>(i1, 0);
+            const float* zi2 = controlPointsZs.ptr<float>(i2, 0);
+            __m256 zs = _mm256_set_ps(zi1[0], zi1[1], zi1[2], zi1[3], zi2[0], zi2[1], zi2[2], zi2[3]);
+
+            float biu3 = 3 * u * u * u1;
+            float biu4 = u * u * u;
+            __m256 bius = _mm256_set_ps(biu3, biu3, biu3, biu3, biu4, biu4, biu4, biu4);
+            //__m256 bius = _mm256_permutevar8x32_ps(uvs_and_bius, biuSelectionMask1);
+
+            __m256 thirdsi = _mm256_set_ps(THIRDS[i1], THIRDS[i1], THIRDS[i1], THIRDS[i1], THIRDS[i2], THIRDS[i2], THIRDS[i2], THIRDS[i2]);
+
+            __m256 p1 = _mm256_mul_ps(bius, coeffs);
+            __m256 px1 = _mm256_mul_ps(p1, thirds);
+            __m256 py1 = _mm256_mul_ps(p1, thirdsi);
+            __m256 pz1 = _mm256_mul_ps(p1, zs);
+
+            xsums = _mm256_add_ps(xsums, px1);
+            ysums = _mm256_add_ps(ysums, py1);
+            zsums = _mm256_add_ps(zsums, pz1);
+        }
+
+        //float x = xsums.m256_f32[4] + xsums.m256_f32[5] + xsums.m256_f32[6] + xsums.m256_f32[7];
+        //float y = ysums.m256_f32[4] + ysums.m256_f32[5] + ysums.m256_f32[6] + ysums.m256_f32[7];
+        //float z = zsums.m256_f32[4] + zsums.m256_f32[5] + zsums.m256_f32[6] + zsums.m256_f32[7];
+
+        //float x = 0.0f;
+        //float y = 0.0f;
+        //float z = 0.0f;
+
+        //for (int i = 0; i < 8; i++)
+        //{
+        //    x += xsums.m256_f32[i];
+        //    y += ysums.m256_f32[i];
+        //    z += zsums.m256_f32[i];
+        //}
+
+        float x = hsum_avx(xsums);
+        float y = hsum_avx(ysums);
+        float z = hsum_avx(zsums);
+
+        return cv::Point3f(x, y, z);
+    }
