@@ -1,9 +1,0 @@
-[submodule "cpp-base-util"]
-	path = cpp-base-util
-	url = git@github.com:ryanseghers/cpp-base-util.git
-[submodule "cpp-opencv-util"]
-	path = cpp-opencv-util
-	url = git@github.com:ryanseghers/cpp-opencv-util.git
-[submodule "cv-remap-poly-cuda"]
-	path = cv-remap-poly-cuda
-	url = git@github.com:ryanseghers/cv-remap-poly-cuda.git
