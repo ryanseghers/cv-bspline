@@ -48,20 +48,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(CvPlot)
 
-# cpp-opencv-util
-# Use a neighbor copy if it exists, otherwise fetch.
-# It also adds cpp-base-util.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../cpp-opencv-util/CMakeLists.txt")
-  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../cpp-opencv-util" "externals/cpp-opencv-util")
-else()
-  # Use FetchContent to download and include cpp-opencv-util
-  FetchContent_Declare(
-    cpp-opencv-util
-    GIT_REPOSITORY https://github.com/ryanseghers/cpp-opencv-util.git
-  )
-  FetchContent_MakeAvailable(cpp-opencv-util)
-endif()
-
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
