@@ -103,3 +103,154 @@
 
         return cv::Point3f(x, y, z);
     }
+
+
+    void computeBezierControlPointsPlain(const cv::Mat& bSplineControlPointZs, cv::Mat& bezierControlPointsZs);
+
+
+    /**
+     * @brief Horizontal, just one cell.
+     * This can be called for first and last rows, but not for first and last cols.
+     */
+    void computeBezierControlPointsPlainSingleCellHorizontal(const cv::Mat& bSplineControlPointZs, int r, int c, cv::Mat& bezierControlPointsZs)
+    {
+        // Setup for indexing the matrices.
+        float* bsp = (float*)bSplineControlPointZs.data;
+        int bspStride = bSplineControlPointZs.step[0] / bSplineControlPointZs.elemSize();
+
+        float* bzp = (float*)bezierControlPointsZs.data;
+        int bzpStride = bezierControlPointsZs.step[0] / bezierControlPointsZs.elemSize();
+
+        // Compute
+        float zThis = bsp[r * bspStride + c];
+        float zNext = bsp[r * bspStride + c + 1]; // By our definition of a cell there is always a next point.
+
+        float p2z = interpolate(zThis, zNext, oneThird);
+        float p3z = interpolate(zThis, zNext, twoThird);
+
+        // First bezier point in cell is the mid-point from prior two-thirds point to this one-third point.
+        float zPrior = bsp[r * bspStride + c - 1];
+        float p1z = interpolate(zPrior, zThis, twoThird);
+        float midz = interpolate(p1z, p2z, 0.5f);
+        bzp[r * 3 * bzpStride + c * 3] = midz;
+        bzp[r * 3 * bzpStride + c * 3 + 1] = p2z;
+        bzp[r * 3 * bzpStride + c * 3 + 2] = p3z;
+    }
+
+    /**
+    * @brief Vertical, just one cell.
+    * This can only be called for non-edge cells.
+    */
+    void computeBezierControlPointsPlainSingleCellVertical(cv::Mat& horzZs, int r, int c, cv::Mat& bezierControlPointsZs)
+    {
+        // Setup for indexing the matrices.
+        float* hzp = (float*)horzZs.data;
+        int hzpStride = horzZs.step[0] / horzZs.elemSize();
+
+        float* bzp = (float*)bezierControlPointsZs.data;
+        int bzpStride = bezierControlPointsZs.step[0] / bezierControlPointsZs.elemSize();
+
+        // Compute
+        int bri = r * 3; // bezier row index
+
+        // Cells have 3 control points so have to interpolate each of them.
+        for (int bi = 0; bi < 3; bi++)
+        {
+            int bci = c * 3 + bi; // bezier col index
+
+            float bptPrior = hzp[hzpStride * (bri - 3) + bci];
+            float bptThis = hzp[hzpStride * bri + bci];
+            float bptNext = hzp[hzpStride * (bri + 3) + bci]; // this refers to a horizontally interpolated row
+            
+            float p2 = interpolate(bptThis, bptNext, oneThird);
+            float p3 = interpolate(bptThis, bptNext, twoThird);
+            float p1 = interpolate(bptPrior, bptThis, twoThird);
+            float mid = interpolate(p1, p2, 0.5f);
+
+            bzp[bzpStride * bri + bci] = mid;
+            bzp[bzpStride * (bri + 1) + bci] = p2;
+            bzp[bzpStride * (bri + 2) + bci] = p3;
+        }
+    }
+
+    /**
+    * @brief Canonical, single-cell compute bezier control points from b-spline control points.
+    */
+    void computeBezierControlPointsPlain(const cv::Mat& bSplineControlPointZs, cv::Mat& bezierControlPointsZs)
+    {
+        // Number of bezier control points.
+        // See the readme for the reasoning behind these sizes.
+        int nbr = bSplineControlPointZs.rows * 3;
+        int nbc = bSplineControlPointZs.cols * 3;
+        bezierControlPointsZs = cv::Mat::zeros(nbr, nbc, CV_32FC1);
+
+        // We need a temp matrix for the horizontal interpolation results because otherwise some
+        // get overwritten before they are used in the vertical interpolation.
+        cv::Mat horzZs = cv::Mat::zeros(nbr + 3, nbc + 3, CV_32FC1);
+
+        // Interpolate within rows (so in the X direction).
+        // For all rows because the top and bottom are used for vertical.
+        for (int r = 0; r < bSplineControlPointZs.rows; r++)
+        {
+            for (int c = 1; c < bSplineControlPointZs.cols - 1; c++)
+            {
+                computeBezierControlPointsPlainSingleCellHorizontal(bSplineControlPointZs, r, c, horzZs);
+            }
+        }
+
+        // Interpolate within cols (so in the Y direction) on the points already interpolated in the x-dir.
+        // For each b-spline cell, including margin cells.
+        // But now we are working in the bezier control points, so 3 points per cell.
+        for (int r = 1; r < bSplineControlPointZs.rows - 1; r++)
+        {
+            for (int c = 1; c < bSplineControlPointZs.cols - 1; c++)
+            {
+                computeBezierControlPointsPlainSingleCellVertical(horzZs, r, c, bezierControlPointsZs);
+            }
+        }
+    }
+
+
+          
+        //// copy to output
+        //memcpy(&bzp[bzpStride * (bri + 0) + c * 3], &bzPriorRow[0], 3 * sizeof(float));
+        //memcpy(&bzp[bzpStride * (bri + 1) + c * 3], &bzThisRow[0], 3 * sizeof(float));
+        //memcpy(&bzp[bzpStride * (bri + 2) + c * 3], &bzNextRow[0], 3 * sizeof(float));
+
+        //// We are computing a single cell's 3x3 bezier control points, but for vertical we need
+        //// a row prior and a row next.
+        //const int tmpCols = 3;
+        //float tmpZs[4 * tmpCols] = { 0.0f }; // 4 rows, 3 columns
+
+        // Horizontal
+        // This row
+        //horizontalBSplineInterp(bsp, bspStride, r, c, &tmpZs[0]);
+
+        //// Next row into last row of tmpZs
+        //// If there is no next row then tmpZs just has the current row and that gets copied to output.
+        //if (r < bSplineControlPointZs.rows - 1)
+        //{
+        //    //horizontalBSplineInterp(bsp, bspStride, r + 1, c, &tmpZs[3 * tmpCols]);
+
+        //    // Vertical, in the tmpZs.
+        //    // First and last rows are already computed by horizontal interpolation.
+        //    for (int j = 1; j < 3; j++) // row
+        //    {
+        //        for (int i = 0; i < 3; i++) // col
+        //        {
+        //            tmpZs[j * tmpCols + i] = interpolate(tmpZs[(j - 1) * tmpCols + i], tmpZs[(3 * tmpCols) + i], THIRDS[j]);
+        //        }
+        //    }
+        //}
+
+        //// Copy tmpZs to bzp
+        //for (int j = 0; j < 3; j++)
+        //{
+        //    int bri = r * 3 + j; // bezier row index
+
+        //    for (int i = 0; i < 3; i++)
+        //    {
+        //        bzp[bzpStride * bri + c * 3 + i] = tmpZs[j * tmpCols + i];
+        //    }
+        //}
+

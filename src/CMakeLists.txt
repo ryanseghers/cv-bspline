@@ -4,8 +4,8 @@ project(cv-bspline LANGUAGES CUDA CXX VERSION 0.1.0)
 set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 7.5 is 20 series, 8.6 is 30 series
-set(CMAKE_CUDA_ARCHITECTURES "75;86")
+# 7.5 is 20 series, 8.6 is 30 series, 8.9 is 40 series
+set(CMAKE_CUDA_ARCHITECTURES "75;86;89")
 
 enable_language(CUDA)
 find_package(CUDAToolkit)
@@ -87,6 +87,12 @@ set(SOURCE_FILES
 	
 	MatWave.cpp
 	MatWave.h
+
+	cudaUtil.h
+	cudaUtil.cu
+
+	cudaBezier.h
+	cudaBezier.cu
 
 	main.cpp
 )

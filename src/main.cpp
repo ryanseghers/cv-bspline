@@ -20,6 +20,9 @@
 #include "BSplineGrid.h"
 #include "MatWave.h"
 #include "ImageTransformBSpline.h"
+#include "cudaUtil.h"
+#include "cudaBezier.h"
+
 
 using namespace std;
 using namespace std::chrono;
@@ -133,7 +136,7 @@ void tryComputeBezierControlPoints()
     dumpMat("B-Spline Control Points", zs);
 
     cv::Mat bezierControlMatZs;
-    computeBezierControlPoints(zs, bezierControlMatZs);
+    computeBezierControlPoints(zs, bezierControlMatZs, false);
 
     auto bezierControlPoints = matToPoints(bezierControlMatZs);
     dumpPoints("Bezier Control Points", bezierControlPoints);
@@ -428,7 +431,7 @@ void benchmarkBSplineSurface()
 
     for (int i = 0; i < nCycles; ++i)
     {
-        computeBezierControlPoints(zs, bezierControlPointsZs);
+        computeBezierControlPoints(zs, bezierControlPointsZs, false);
     }
 
     //evalBSplineSurfaceCubicPrecomputedMat(bezierControlPointsZs, nPointsDim, evalMat);
@@ -544,6 +547,102 @@ void tryImageTransformBSpline()
     cv::destroyAllWindows();
 }
 
+// CudaMat is just a wrapper, no memory ownership.
+template <typename T>
+CudaMat2<T> CreateCudaMat(cv::Mat mat)
+{
+    CudaMat2<T> cudaMat;
+    cudaMat.dataHost = (T*)mat.ptr();
+    cudaMat.cols = mat.cols;
+    cudaMat.rows = mat.rows;
+
+    int step = mat.step;
+    int step1 = mat.step1();
+
+    // for cv::Mat, step[0] is the stride, in bytes
+    cudaMat.stride = mat.step[0] / sizeof(T);
+
+    return cudaMat;
+}
+
+// Run and compare all the implementations
+void tryAllComputeBezierControlPoints()
+{
+    bool doFull = false;
+
+    BSplineGrid grid(2, 3);
+    grid.fillRandomControlPoints(0, 4);
+    dumpMat("B-Spline Control Points", grid.getControlPointZs());
+
+    // Simple transpose method
+    cv::Mat bezierControlPointsZs;
+    computeBezierControlPointsSimple(grid.getControlPointZs(), bezierControlPointsZs);
+    dumpMat("CPU Bezier Control Points", bezierControlPointsZs, 3, 3);
+    //gnuPlot3dSurfaceMat("Orig CPU B-Spline Surface", bezierControlPointsZs);
+
+    //// Canonical impl
+    //cv::Mat bezierControlPointsZsCanonical;
+    //computeBezierControlPoints(grid.getControlPointZs(), bezierControlPointsZsCanonical, doFull);
+    //dumpMat("CPU Bezier Control Points", bezierControlPointsZsCanonical, 3, 3);
+    //printDiffMat(bezierControlPointsZs, bezierControlPointsZsCanonical, 3, 3);
+
+    //// Plain
+    //cv::Mat bezierControlPointsZsPlain;
+    //computeBezierControlPointsPlain(grid.getControlPointZs(), bezierControlPointsZsPlain);
+    //dumpMat("CPU Bezier Control Points (Plain)", bezierControlPointsZsPlain, 3, 3);
+    //printDiffMat(bezierControlPointsZs, bezierControlPointsZsPlain, 3, 3);
+
+    // Single cell isolated
+    cv::Mat bezierControlPointsZsIsolated;
+    computeBezierControlPointsIsolated(grid.getControlPointZs(), bezierControlPointsZsIsolated, doFull);
+    dumpMat("CPU Bezier Control Points (Isolated)", bezierControlPointsZsIsolated, 3, 3);
+    printDiffMat(bezierControlPointsZs, bezierControlPointsZsIsolated, 3, 3);
+
+    //// CUDA
+    //int deviceId = 0;
+    //CudaMat2<float> cudaControlPointZs = CreateCudaMat<float>(grid.getControlPointZs());
+    //cv::Mat cudaResultBezierControlPointsZs = cv::Mat::zeros(bezierControlPointsZs.rows, bezierControlPointsZs.cols, CV_32F);
+    //CudaMat2<float> cudaBezierControlPointZs = CreateCudaMat<float>(cudaResultBezierControlPointsZs);
+    //cudaComputeBezierControlPoints(deviceId, cudaControlPointZs, cudaBezierControlPointZs);
+    //dumpMat("CUDA Bezier Control Points", cudaResultBezierControlPointsZs, 3, 3);
+    //printDiffMat(bezierControlPointsZs, cudaResultBezierControlPointsZs, 3, 3);
+}
+
+void tryCudaEvalBSpline()
+{
+    int deviceId = 0;
+    printDeviceInfo(deviceId);
+
+    BSplineGrid grid(2, 3);
+    grid.fillRandomControlPoints(0, 4);
+
+    int nPointsPerDim = 3;
+    cv::Mat evalMat = grid.evalSurface(nPointsPerDim);
+    dumpMat("CPU B-Spline Surface", evalMat);
+    //gnuPlot3dSurfaceMat("B-Spline Surface", evalMat);
+
+    evalMat = evalMat.zeros(evalMat.rows, evalMat.cols, CV_32FC3);
+
+    // CUDA
+    cv::Mat zs = grid.getControlPointZs();
+    dumpMat("Control Point Zs", zs);
+
+    CudaMat2<float> cudaZs = CreateCudaMat<float>(zs);
+    cv::Mat evalMat2 = cv::Mat::zeros(grid.rows() * nPointsPerDim, grid.cols() * nPointsPerDim, CV_32FC3);
+    CudaMat2<CudaPoint3<float>> cudaEvalMat = CreateCudaMat<CudaPoint3<float>>(evalMat2);
+    ImageUtil::printMatInfo(evalMat2);
+
+    cudaEvalBSpline(deviceId, cudaZs, nPointsPerDim, cudaEvalMat);
+    dumpMat("CUDA B-Spline Surface", evalMat2);
+    //gnuPlot3dSurfaceMat("CUDA B-Spline Surface", evalMat);
+}
+
+void tryMatStrides()
+{
+    cv::Mat mat = cv::Mat::zeros(2, 3, CV_32FC3);
+    ImageUtil::printMatInfo(mat);
+}
+
 int main()
 {
     fmt::print("Starting...\n");
@@ -571,7 +670,10 @@ int main()
     //tryBSplineGrid();
     //tryMatWave();
     //tryBSplineGridDeformImage();
-    tryImageTransformBSpline();
+    //tryImageTransformBSpline();
+    //tryMatStrides();
+    tryAllComputeBezierControlPoints();
+    //tryCudaEvalBSpline();
 
     fmt::print("Done.\n");
     return 0;

@@ -60,9 +60,9 @@ namespace CvImageDeform
         /**
         * @brief Evaluate the b-spline surface over points in the surface roi, with nPoints x nPoints per cell.
         * This is usually just for rendering, so you eval many more points on the surface to fill in the rendered surface.
-        * Returns a 1-channel matrix with the z coordinates of the sample points.
         * 
         * @param nPointsDim Per-dimension mumber of points to evaluate per cell, so nDimPerCell * nDimPerCell total points.
+        * @return cv::Mat 1-d because evaluation uniform x,y grid.
         */
         cv::Mat evalSurface(int nPointsDim);
 

@@ -13,6 +13,8 @@
 
 namespace CvImageDeform
 {
+    void computeBezierControlPointsSimple(const cv::Mat& bSplineControlPointZs, cv::Mat& bezierControlPointsZs);
+
     /**
      * @brief For a uniform grid of B-Spline control points, compute (interpolate) the corresponding Bezier control points.
      * 
@@ -22,8 +24,9 @@ namespace CvImageDeform
      * 
      * @param bSplineControlPointZs Just Z values
      * @param bezierControlPoints Just Z values.
+     * @param doFull If true, compute all cells, including edge cells. If false, compute only the inner cells.
     */
-    void computeBezierControlPoints(const cv::Mat& bSplineControlPointZs, cv::Mat& bezierControlPointsZs, bool doDebug = false);
+    void computeBezierControlPoints(const cv::Mat& bSplineControlPointZs, cv::Mat& bezierControlPointsZs, bool doFull);
 
     /**
     * @brief Eval a B-Spline surface using the given (pre-computed) Bezier control points.
@@ -39,4 +42,6 @@ namespace CvImageDeform
      * @brief Eval a B-Spline surface using the B-spline control points.
     */
     void evalBSplineSurfaceCubicMat(const cv::Mat& controlPointZs, int nPointsDim, cv::Mat& outputMat);
+
+    void computeBezierControlPointsIsolated(const cv::Mat& bSplineControlPointZs, cv::Mat& bezierControlPointsZs, bool doFull);
 }

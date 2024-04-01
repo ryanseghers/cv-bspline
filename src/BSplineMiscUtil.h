@@ -15,7 +15,8 @@ namespace CvImageDeform
     }
 
     void dumpPoints(const char* title, const std::vector<std::vector<cv::Point3f>>& points);
-    void dumpMat(const char* title, const cv::Mat& m);
+    void dumpMat(const char* title, const cv::Mat& m, int cellWidth = 0, int cellHeight = 0);
+    void printDiffMat(const cv::Mat& mat1, const cv::Mat& mat2, int cellWidth = 0, int cellHeight = 0);
 
     /**
     * @brief Convert a mat of Z values to a vector of 3D points.
