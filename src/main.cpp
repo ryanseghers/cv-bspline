@@ -21,7 +21,9 @@
 #include "MatWave.h"
 #include "ImageTransformBSpline.h"
 #include "cudaUtil.h"
-#include "cudaBezier.h"
+#include "cudaBSplineCoeffs.h"
+#include "cudaBSplineEval.h"
+#include "cudaBSplineTransform.h"
 
 
 using namespace std;
@@ -466,7 +468,7 @@ void tryMatWave()
     }
 }
 
-int pxPerCell = 32;
+int pxPerCell = 16;
 cv::Mat dxControlMatZs;
 cv::Mat dyControlMatZs;
 
@@ -568,7 +570,7 @@ CudaMat2<T> CreateCudaMat(cv::Mat mat)
 // Run and compare all the implementations
 void tryAllComputeBezierControlPoints()
 {
-    bool doFull = false;
+    bool doFull = true;
 
     BSplineGrid grid(2, 3);
     grid.fillRandomControlPoints(0, 4);
@@ -598,49 +600,177 @@ void tryAllComputeBezierControlPoints()
     dumpMat("CPU Bezier Control Points (Isolated)", bezierControlPointsZsIsolated, 3, 3);
     printDiffMat(bezierControlPointsZs, bezierControlPointsZsIsolated, 3, 3);
 
-    //// CUDA
-    //int deviceId = 0;
-    //CudaMat2<float> cudaControlPointZs = CreateCudaMat<float>(grid.getControlPointZs());
-    //cv::Mat cudaResultBezierControlPointsZs = cv::Mat::zeros(bezierControlPointsZs.rows, bezierControlPointsZs.cols, CV_32F);
-    //CudaMat2<float> cudaBezierControlPointZs = CreateCudaMat<float>(cudaResultBezierControlPointsZs);
-    //cudaComputeBezierControlPoints(deviceId, cudaControlPointZs, cudaBezierControlPointZs);
-    //dumpMat("CUDA Bezier Control Points", cudaResultBezierControlPointsZs, 3, 3);
-    //printDiffMat(bezierControlPointsZs, cudaResultBezierControlPointsZs, 3, 3);
+    // CUDA
+    int deviceId = 0;
+    CudaMat2<float> cudaControlPointZs = CreateCudaMat<float>(grid.getControlPointZs());
+    cv::Mat cudaResultBezierControlPointsZs = cv::Mat::zeros(bezierControlPointsZs.rows, bezierControlPointsZs.cols, CV_32F);
+    CudaMat2<float> cudaBezierControlPointZs = CreateCudaMat<float>(cudaResultBezierControlPointsZs);
+    cudaComputeBezierControlPoints(deviceId, cudaControlPointZs, cudaBezierControlPointZs);
+    dumpMat("CUDA Bezier Control Points", cudaResultBezierControlPointsZs, 3, 3);
+    printDiffMat(bezierControlPointsZs, cudaResultBezierControlPointsZs, 3, 3);
 }
 
+// Eval with pre-computed bezier coeffs
 void tryCudaEvalBSpline()
 {
-    int deviceId = 0;
-    printDeviceInfo(deviceId);
-
     BSplineGrid grid(2, 3);
     grid.fillRandomControlPoints(0, 4);
+    dumpMat("B-Spline Control Points", grid.getControlPointZs());
 
-    int nPointsPerDim = 3;
-    cv::Mat evalMat = grid.evalSurface(nPointsPerDim);
-    dumpMat("CPU B-Spline Surface", evalMat);
-    //gnuPlot3dSurfaceMat("B-Spline Surface", evalMat);
+    // Compute bezier coeffs
+    cv::Mat bezierControlPointsZs;
+    cv::Mat bSplineControlPointsZs = grid.getControlPointZs();
+    computeBezierControlPointsSimple(bSplineControlPointsZs, bezierControlPointsZs);
+    dumpMat("CPU Bezier Control Points", bezierControlPointsZs, 3, 3);
+    //gnuPlot3dSurfaceMat("Orig CPU B-Spline Surface", bezierControlPointsZs);
 
-    evalMat = evalMat.zeros(evalMat.rows, evalMat.cols, CV_32FC3);
+    int nPointsPerDim = 2;
+    int nr = bezierControlPointsZs.rows / 3;
+    int nc = bezierControlPointsZs.cols / 3;
+    cv::Mat evalMatCpu = cv::Mat::zeros(nr * nPointsPerDim, nc * nPointsPerDim, CV_32FC3);
+    cv::Rect evalRoi(0, 0, (nc - 1) * nPointsPerDim, (nr - 1) * nPointsPerDim);
+
+    // Canonical impl
+    evalBSplineSurfaceCubicPrecomputedMat(bezierControlPointsZs, nPointsPerDim, evalMatCpu);
+    dumpMat("CPU Eval Surface", evalMatCpu(evalRoi), nPointsPerDim, nPointsPerDim);
+    //printDiffMat(bezierControlPointsZs, bezierControlPointsZsCanonical, 3, 3);
 
     // CUDA
-    cv::Mat zs = grid.getControlPointZs();
-    dumpMat("Control Point Zs", zs);
+    int deviceId = 0;
+    CudaMat2<float> cudaControlPointZs = CreateCudaMat<float>(bSplineControlPointsZs);
+    cv::Mat cudaResultBezierControlPointsZs = cv::Mat::zeros(bezierControlPointsZs.rows, bezierControlPointsZs.cols, CV_32F);
+    CudaMat2<float> cudaBezierControlPointZs = CreateCudaMat<float>(cudaResultBezierControlPointsZs);
+    cudaComputeBezierControlPoints(deviceId, cudaControlPointZs, cudaBezierControlPointZs);
+    //dumpMat("CUDA Bezier Control Points", cudaResultBezierControlPointsZs, 3, 3);
+    //printDiffMat(bezierControlPointsZs, cudaResultBezierControlPointsZs, 3, 3);
 
-    CudaMat2<float> cudaZs = CreateCudaMat<float>(zs);
-    cv::Mat evalMat2 = cv::Mat::zeros(grid.rows() * nPointsPerDim, grid.cols() * nPointsPerDim, CV_32FC3);
-    CudaMat2<CudaPoint3<float>> cudaEvalMat = CreateCudaMat<CudaPoint3<float>>(evalMat2);
-    ImageUtil::printMatInfo(evalMat2);
+    cv::Mat evalMatCuda = cv::Mat::zeros(nr * nPointsPerDim, nc * nPointsPerDim, CV_32FC3);
+    CudaMat2<CudaPoint3<float>> evalMatCuda2 = CreateCudaMat<CudaPoint3<float>>(evalMatCuda);
+    cudaEvalBSplinePrecomp(deviceId, cudaBezierControlPointZs, nPointsPerDim, evalMatCuda2);
+    dumpMat("CUDA Eval Surface", evalMatCuda(evalRoi), nPointsPerDim, nPointsPerDim);
+    printDiffMat(evalMatCpu(evalRoi), evalMatCuda(evalRoi), nPointsPerDim, nPointsPerDim);
 
-    cudaEvalBSpline(deviceId, cudaZs, nPointsPerDim, cudaEvalMat);
-    dumpMat("CUDA B-Spline Surface", evalMat2);
-    //gnuPlot3dSurfaceMat("CUDA B-Spline Surface", evalMat);
+    // Non-precomputed
+    cv::Mat evalMatCudaNonPrecomp = cv::Mat::zeros(nr * nPointsPerDim, nc * nPointsPerDim, CV_32FC3);
+    CudaMat2<CudaPoint3<float>> evalCudaMat3 = CreateCudaMat<CudaPoint3<float>>(evalMatCudaNonPrecomp);
+    CudaMat2<float> bSplineControlPointsZsCudaMat = CreateCudaMat<float>(bSplineControlPointsZs);
+    cudaEvalBSpline(deviceId, bSplineControlPointsZsCudaMat, nPointsPerDim, evalCudaMat3);
+    dumpMat("CUDA Eval Surface", evalMatCudaNonPrecomp(evalRoi), nPointsPerDim, nPointsPerDim);
+    printDiffMat(evalMatCpu(evalRoi), evalMatCudaNonPrecomp(evalRoi), nPointsPerDim, nPointsPerDim);
 }
 
 void tryMatStrides()
 {
     cv::Mat mat = cv::Mat::zeros(2, 3, CV_32FC3);
     ImageUtil::printMatInfo(mat);
+}
+
+void tryCudaTransformImageGray()
+{
+    cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+    int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+    saveDebugImage(img, "orig");
+
+    // crop for simple first case
+    //img = img(cv::Rect(0, 0, 1280, 1024));
+
+    cv::Mat img8u;
+    cv::cvtColor(img, img8u, cv::COLOR_RGB2GRAY);
+    saveDebugImage(img8u, "gray");
+
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+    cv::Mat dst;
+
+    // random distortion
+    imageTransform.setRandomDistortion(-5, 5);
+
+    // CPU
+    imageTransform.transformImage(img, interp, dst);
+    cv::Mat cpuGray;
+    cv::cvtColor(dst, cpuGray, cv::COLOR_RGB2GRAY);
+    saveDebugImage(cpuGray, "cpuGray");
+
+    //// get bezier control point z's per pixel
+    //cv::Mat cpuDebugImage = cv::Mat::zeros(dst.rows, dst.cols, CV_32F);
+    //imageTransform.getDxBezierZsPerPixel(cpuDebugImage);
+    //saveDebugImage(cpuDebugImage, "cpuDebugImage");
+
+    // CUDA
+    int deviceId = 0;
+
+    cv::Mat dxs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dys = imageTransform.getDyGrid().getControlPointZs();
+    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxs);
+    CudaMat2<float> cudaDys = CreateCudaMat<float>(dys);
+
+    // 8u
+    CudaMat2<uint8_t> srcCuda8u = CreateCudaMat<uint8_t>(img8u);
+
+    cv::Mat dstCuda = cv::Mat::zeros(dst.rows, dst.cols, CV_8U);
+    CudaMat2<uint8_t> dstCuda8u = CreateCudaMat<uint8_t>(dstCuda);
+
+    // scale is how the grid relates to the image pixels
+    int bSplineGridRows = imageTransform.getDxGrid().rows();
+    int bSplineGridCols = imageTransform.getDxGrid().cols();
+    float dxScale = (float)dst.cols / bSplineGridCols; // pixels per cell
+    float dyScale = (float)dst.rows / bSplineGridRows; // pixels per cell
+
+    cudaBSplineTransformImage(deviceId, srcCuda8u, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCuda8u);
+    saveDebugImage(img8u, "gray");
+    saveDebugImage(dstCuda, "dstCudaGray");
+}
+
+void tryCudaTransformImageBgra()
+{
+    cv::InterpolationFlags interp = cv::INTER_NEAREST; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+    int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+    saveDebugImage(img, "orig");
+
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+    cv::Mat dst;
+
+    // random distortion
+    imageTransform.setRandomDistortion(-5, 5);
+
+    // CPU
+    imageTransform.transformImage(img, interp, dst);
+    saveDebugImage(dst, "cpu");
+
+    // CUDA
+    int deviceId = 0;
+
+    cv::Mat dxs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dys = imageTransform.getDyGrid().getControlPointZs();
+    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxs);
+    CudaMat2<float> cudaDys = CreateCudaMat<float>(dys);
+
+    // scale is how the grid relates to the image pixels
+    int bSplineGridRows = imageTransform.getDxGrid().rows();
+    int bSplineGridCols = imageTransform.getDxGrid().cols();
+    float dxScale = (float)dst.cols / bSplineGridCols; // pixels per cell
+    float dyScale = (float)dst.rows / bSplineGridRows; // pixels per cell
+
+    // bgra
+    cv::Mat imgBgra;
+    cv::cvtColor(img, imgBgra, cv::COLOR_BGR2BGRA);
+    saveDebugImage(imgBgra, "imgBgra");
+    CudaMat2<BgraQuad> srcCudaBgra = CreateCudaMat<BgraQuad>(imgBgra);
+    cv::Mat dstCudaBgra = cv::Mat::zeros(dst.rows, dst.cols, CV_8UC4);
+    CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
+    cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
+    //saveDebugImage(imgBgra, "imgBgra");
+    saveDebugImage(dstCudaBgra, "dstCudaBgra");
+
+    //// check if rgb vs bgra is affecting save image
+    //cv::Mat imgSave;
+    //cv::cvtColor(dstCudaBgra, imgSave, cv::COLOR_BGRA2RGB);
+    //saveDebugImage(imgSave, "dstCudaBgra");
 }
 
 int main()
@@ -672,8 +802,10 @@ int main()
     //tryBSplineGridDeformImage();
     //tryImageTransformBSpline();
     //tryMatStrides();
-    tryAllComputeBezierControlPoints();
+    //tryAllComputeBezierControlPoints();
     //tryCudaEvalBSpline();
+    //tryCudaTransformImageGray();
+    tryCudaTransformImageBgra();
 
     fmt::print("Done.\n");
     return 0;

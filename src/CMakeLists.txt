@@ -91,12 +91,19 @@ set(SOURCE_FILES
 	cudaUtil.h
 	cudaUtil.cu
 
-	cudaBezier.h
-	cudaBezier.cu
+	cudaBSplineCoeffs.h
+	cudaBSplineCoeffs.cu
+
+	cudaBSplineEval.h
+	cudaBSplineEval.cu
+
+	cudaBSplineTransform.h
+	cudaBSplineTransform.cu
 
 	main.cpp
 )
 
 add_executable (cv-bspline-main ${SOURCE_FILES})
+set_property(TARGET cv-bspline-main PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 target_include_directories(cv-bspline-main PUBLIC ".")
 target_link_libraries(cv-bspline-main PUBLIC ${OpenCV_LIBS} fmt::fmt CUDA::cudart_static CppOpenCVUtilLib CvPlot::CvPlot Boost::filesystem Boost::iostreams)

@@ -34,14 +34,14 @@ namespace CvImageDeform
         cv::Mat dyEvalMat = dyGrid.evalSurface(rowRes);
 
         // eval mats are 3 channel images, but we only need the Z channel.
-        std::vector<cv::Mat> channels(3);
-        cv::split(dxEvalMat, channels);
-        cv::Mat dxEvalMatZs = channels[2];
+        std::vector<cv::Mat> dxChannels(3);
+        cv::split(dxEvalMat, dxChannels);
+        cv::Mat dxEvalMatZs = dxChannels[2];
         
-        cv::split(dyEvalMat, channels);
-        cv::Mat dyEvalMatZs = channels[2];
+        std::vector<cv::Mat> dyChannels(3);
+        cv::split(dyEvalMat, dyChannels);
+        cv::Mat dyEvalMatZs = dyChannels[2];
 
-        // remap takes x coordinate to sample
         cv::Mat xmap = xcoords + dxEvalMatZs;
         cv::Mat ymap = ycoords + dyEvalMatZs;
 

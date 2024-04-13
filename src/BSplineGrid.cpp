@@ -10,8 +10,6 @@ namespace CvImageDeform
     {
         this->_rows = rows;
         this->_cols = cols;
-        this->_origin = cv::Point2f(0, 0);
-        this->_scale = 1;
 
         // The computable area is smaller than the control points area.
         this->_controlPointZs = cv::Mat::zeros(rows + 3, cols + 3, CV_32FC1);
@@ -21,8 +19,6 @@ namespace CvImageDeform
     {
         this->_rows = rows;
         this->_cols = cols;
-        this->_origin = origin;
-        this->_scale = scale;
     }
 
     void BSplineGrid::fillRandomControlPoints(float min, float max)

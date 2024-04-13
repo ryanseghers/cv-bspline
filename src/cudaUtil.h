@@ -1,11 +1,12 @@
 #pragma once
 #include "cuda_runtime.h"
+#include <exception>
 
 
 /**
 * @brief Thin 2-d image wrapper, no automatic memory management/ownership.
 * This is designed for having buffers on both host and device.
-* This does have methods to alloc and free device memory, but not host.
+* This has methods to alloc and free device memory, but not host.
 */
 template <typename T>
 struct CudaMat2
@@ -40,6 +41,34 @@ struct CudaMat2
      */
     CudaMat2(int rows, int cols, int stride) : rows(rows), cols(cols), stride(stride) {}
 
+    /**
+     * @brief This won't resize, only initialize size.
+     * Only for continous buffers.
+     */
+    void setSize(int newRows, int newCols)
+    {
+        if ((newRows == rows) && (newCols == cols))
+        {
+            return;
+        }
+
+        if ((rows > 0) && (newRows != rows))
+        {
+            throw std::exception("Cannot resize buffer.");
+        }
+
+        if ((cols > 0) && (newCols != cols))
+        {
+            throw std::exception("Cannot resize buffer.");
+        }
+
+        rows = newRows;
+        cols = newCols;
+        stride = newCols;
+        dataHost = nullptr;
+        dataDevice = nullptr;
+    }
+
     int getWidthInBytes() const
     {
         return cols * sizeof(T);
@@ -53,6 +82,11 @@ struct CudaMat2
     int getSizeInBytes() const
     {
        return rows * stride * sizeof(T);
+    }
+
+    bool getIsContinuous() const
+    {
+        return cols == stride;
     }
 
     /**
@@ -140,6 +174,14 @@ struct CudaMat2
             rows,
             cudaMemcpyHostToDevice);
     }
+};
+
+struct BgraQuad
+{
+    uint8_t b;
+    uint8_t g;
+    uint8_t r;
+    uint8_t a;
 };
 
 template <typename T>
@@ -231,3 +273,6 @@ void assertCudaStatus(cudaError_t cudaStatus, const char* msg);
 void setDevice(int deviceId = 0);
 void printDeviceInfo(int deviceId = 0);
 void setupSrcImageTexture16u(int width, int height, const uint16_t* psrc, int samplingType, cudaArray_t& srcArray, cudaTextureObject_t& srcTexture);
+void computeGridAndBlockDims(int rows, int cols, dim3& dimGrid, dim3& dimBlock);
+void setupSrcImageTexture8u(const CudaMat2<uint8_t>& image, int samplingType, cudaArray_t& srcArray, cudaTextureObject_t& srcTexture);
+void setupSrcImageTextureBgra(const CudaMat2<BgraQuad>& image, int samplingType, cudaArray_t& srcArray, cudaTextureObject_t& srcTexture);

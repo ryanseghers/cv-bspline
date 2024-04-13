@@ -2,7 +2,7 @@
 C++ OpenCV Bezier and B-Spline Library
 
 ## Introduction
-This has Bezier and B-spline curve (1-D) and surface (2-D) implementations in C++ using OpenCV, and in CUDA.
+This has Bezier and B-spline curve (1-D) and surface (2-D) implementations in C++ using OpenCV, and also CUDA implementations.
 
 ## Background and Definitions
 In this implementation, in the 1-D case, we picture the B-spline control points as defining a sequence of segments. Note that the last point in the sequence only ends a segment, it doesn't define another segment.

@@ -150,16 +150,13 @@ namespace CvImageDeform
             float p1 = interpolate(bptPrior, bptThis, twoThird);
             float p2 = interpolate(bptThis, bptNext, oneThird);
             float p3 = interpolate(bptThis, bptNext, twoThird);
-            
+
             float mid = interpolate(p1, p2, 0.5f);
 
             bzp[bzpStride * (bri + 0) + bci + bi] = mid;
 
-            if (r < bSplineControlPointZs.rows - 1)
-            {
-                bzp[bzpStride * (bri + 1) + bci + bi] = p2;
-                bzp[bzpStride * (bri + 2) + bci + bi] = p3;
-            }
+            bzp[bzpStride * (bri + 1) + bci + bi] = p2;
+            bzp[bzpStride * (bri + 2) + bci + bi] = p3;
         }
     }
 
@@ -197,13 +194,15 @@ namespace CvImageDeform
         {
             // middle cell col
             float zPrior = bsp[r * bspStride + c - 1];
-            float p1 = interpolate(zPrior, zThis, twoThird);
-            float mid = interpolate(p1, pOut[1], 0.5f);
-            pOut[0] = mid;
-
             float zNext = bsp[r * bspStride + c + 1];
-            pOut[1] = interpolate(zThis, zNext, oneThird);
-            pOut[2] = interpolate(zThis, zNext, twoThird);
+            float p1 = interpolate(zPrior, zThis, twoThird);
+            float p2 = interpolate(zThis, zNext, oneThird);
+            float p3 = interpolate(zThis, zNext, twoThird);
+
+            float mid = interpolate(p1, p2, 0.5f);
+            pOut[0] = mid;
+            pOut[1] = p2;
+            pOut[2] = p3;
         }
     }
 
@@ -234,27 +233,20 @@ namespace CvImageDeform
 
         if (r > 0)
         {
-            horizontalBSplineInterpFull(bsp, bspStride, max(0, r - 1), c, bspNumCols, &bzPriorRow[0]);
+            horizontalBSplineInterpFull(bsp, bspStride, r - 1, c, bspNumCols, &bzPriorRow[0]);
         }
 
         horizontalBSplineInterpFull(bsp, bspStride, r, c, bspNumCols, &bzThisRow[0]);
 
         if (r < rMax)
         {
-            horizontalBSplineInterpFull(bsp, bspStride, min(rMax, r + 1), c, bspNumCols, &bzNextRow[0]);
+            horizontalBSplineInterpFull(bsp, bspStride, r + 1, c, bspNumCols, &bzNextRow[0]);
         }
-
-        //// TEMP: copy horizontal results to output and return
-        //for (int i = 0; i < 3; i++)
-        //{
-        //    bzp[bzpStride * bri + bci + i] = bzThisRow[i];
-        //}
-        //return;
 
         // don't do last two cols of last cell column
         int biMax = (c == bSplineControlPointZs.cols - 1) ? 1 : 3;
 
-        // Vertical: same interp pattern but on the horizontal results.
+        // Vertical
         for (int bi = 0; bi < biMax; bi++) // bezier col
         {
             float bptThis = bzThisRow[bi];
@@ -305,8 +297,6 @@ namespace CvImageDeform
         // For each b-spline cell.
         if (doFull)
         {
-            assert(doFull == false); // not implemented yet
-
             for (int r = 0; r < bSplineControlPointZs.rows; r++)
             {
                 for (int c = 0; c < bSplineControlPointZs.cols; c++)
@@ -317,6 +307,8 @@ namespace CvImageDeform
         }
         else
         {
+            assert(false); // not finished: only Full computes the first row/col of edge cells and that is required
+
             for (int r = 1; r < bSplineControlPointZs.rows - 1; r++)
             {
                 for (int c = 1; c < bSplineControlPointZs.cols - 1; c++)
@@ -488,7 +480,7 @@ namespace CvImageDeform
             }
         }
 
-        // For natural-ish edge write the last row.
+        // For full write the last row.
         int r = bSplineControlPointZs.rows - 1;
         int bri = r * 3;
 
@@ -511,12 +503,10 @@ namespace CvImageDeform
 
         ImageUtil::ensureMat(outputMat, nr * nPointsDim, nc * nPointsDim, CV_32FC3);
 
-        // Decided not to clear edge cells here, for perf.
-
-        // Eval non-edge cells.
-        for (int r = 1; r < nr - 1; r++)
+        // We can't eval last row/col of cells, those only have the first coeff computed.
+        for (int r = 0; r < nr - 1; r++)
         {
-            for (int c = 1; c < nc - 1; c++)
+            for (int c = 0; c < nc - 1; c++)
             {
                 cv::Rect bezierCellRoi = cv::Rect(c * 3, r * 3, 4, 4);
                 cv::Rect outputRoi = cv::Rect(c * nPointsDim, r * nPointsDim, nPointsDim, nPointsDim);

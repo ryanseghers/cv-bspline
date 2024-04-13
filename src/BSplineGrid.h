@@ -22,13 +22,6 @@ namespace CvImageDeform
         // Size of the surface roi, not the number of control points.
         int _cols = 0;
 
-        // This class can shift and scale with origin and scale.
-        // This is a real-world origin of the surface roi.
-        cv::Point2f _origin;
-
-        // Multiple the control points by this to get the real-world position.
-        float _scale = 1.0f;
-
         // The x and y are computable, so only need to store Z's.
         // This is larger than the surface roi, so that the surface roi can be computed.
         cv::Mat _controlPointZs;
@@ -39,8 +32,6 @@ namespace CvImageDeform
 
         int rows() const { return _rows; }
         int cols() const { return _cols; }
-        cv::Point2f origin() const { return _origin; }
-        float scale() const { return _scale; }
 
         /**
         * @brief This doesn't clone so you get the original data.

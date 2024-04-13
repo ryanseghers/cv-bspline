@@ -6,7 +6,7 @@ void assertCudaStatus(cudaError_t cudaStatus, const char* msg)
 {
     if (cudaStatus != cudaSuccess)
     {
-        fprintf(stderr, msg);
+        fprintf(stderr, "CUDA error: %s: %s\n", msg, cudaGetErrorString(cudaStatus));
         throw std::exception(msg);
     }
 }
@@ -47,12 +47,13 @@ void printDeviceInfo(int deviceId)
 }
 
 /**
-* @brief Create a 2-d source texture for uint16 data type.
+* @brief Create a 2-d source texture.
+* This is specific to how I'm using source textures for sampling.
 * @param tex Output.
-* @param cuArray The source data (uint16) array.
+* @param cuArray The source data array.
 * @param samplingType Affects texture filter and read modes.
 */
-void createSourceTexture16u(cudaTextureObject_t& tex, cudaArray_t& cuArray, int samplingType)
+void createSourceTexture(cudaTextureObject_t& tex, cudaArray_t& cuArray, int samplingType)
 {
     cudaResourceDesc resourceDesc = {};
     resourceDesc.res.array.array = cuArray;
@@ -71,7 +72,7 @@ void createSourceTexture16u(cudaTextureObject_t& tex, cudaArray_t& cuArray, int 
     {
         // for nearest neighbor and bicubic we do nearest neighbor (because we will be doing bicubic ourselves)
         textureDesc.filterMode = cudaFilterModePoint;
-        textureDesc.readMode = cudaReadModeElementType; // orig type (uint16) rather than float
+        textureDesc.readMode = cudaReadModeElementType; // orig type (uint8) rather than float
     }
 
     cudaTextureAddressMode addressMode = cudaAddressModeBorder; // border means return 0 when off-image rather than clamp the coords (or wrap)
@@ -102,5 +103,75 @@ void setupSrcImageTexture16u(int width, int height, const uint16_t* psrc, int sa
     assertCudaStatus(cudaStatus, "CUDA malloc array failed.");
     cudaStatus = cudaMemcpyToArray(srcArray, 0, 0, psrc, imageLen, cudaMemcpyHostToDevice);
     assertCudaStatus(cudaStatus, "CUDA copy src image to array failed.");
-    createSourceTexture16u(srcTexture, srcArray, samplingType);
+
+    createSourceTexture(srcTexture, srcArray, samplingType);
+}
+
+/**
+* @brief Create a cudaArray and cudaTextureObject and copy source data to device.
+* You must free the cudaArray and cudaTextureObject when done.
+* @param width 
+* @param height 
+* @param psrc Source data.
+* @param samplingType Affects how the texture is set up.
+* @param srcArray Output.
+* @param srcTexture Output.
+*/
+void setupSrcImageTexture8u(const CudaMat2<uint8_t>& image, int samplingType, cudaArray_t& srcArray, cudaTextureObject_t& srcTexture)
+{
+    if (!image.getIsContinuous())
+    {
+        throw std::exception("This doesn't handle non-continuous images yet.");
+    }
+
+    size_t imageLen = image.getSizeInBytes();
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uint8_t>();
+
+    // src image
+    auto cudaStatus = cudaMallocArray(&srcArray, &channelDesc, image.cols, image.rows, cudaArraySurfaceLoadStore);
+    assertCudaStatus(cudaStatus, "CUDA malloc array failed.");
+    cudaStatus = cudaMemcpyToArray(srcArray, 0, 0, image.dataHost, imageLen, cudaMemcpyHostToDevice);
+    assertCudaStatus(cudaStatus, "CUDA copy src image to array failed.");
+    createSourceTexture(srcTexture, srcArray, samplingType);
+}
+
+void setupSrcImageTextureBgra(const CudaMat2<BgraQuad>& image, int samplingType, cudaArray_t& srcArray, cudaTextureObject_t& srcTexture)
+{
+    if (!image.getIsContinuous())
+    {
+        throw std::exception("This doesn't handle non-continuous images yet.");
+    }
+
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uchar4>(); // same as cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsigned)
+
+    // src image
+    auto cudaStatus = cudaMallocArray(&srcArray, &channelDesc, image.cols, image.rows, cudaArraySurfaceLoadStore);
+    assertCudaStatus(cudaStatus, "CUDA malloc array failed.");
+    size_t imageLen = image.getSizeInBytes();
+    cudaStatus = cudaMemcpyToArray(srcArray, 0, 0, image.dataHost, imageLen, cudaMemcpyHostToDevice);
+    assertCudaStatus(cudaStatus, "CUDA copy src image to array failed.");
+    createSourceTexture(srcTexture, srcArray, samplingType);
+}
+
+/**
+ * @brief Compute the grid and block dimensions for a given image size.
+ * @param rows Total number of rows we want to process.
+ * @param cols Total number of columns we want to process.
+ * @param dimGrid Dimensions of the grid, in thread blocks.
+ * @param dimBlock Dimensions of a thread block, in threads.
+ */
+void computeGridAndBlockDims(int rows, int cols, dim3& dimGrid, dim3& dimBlock)
+{
+    // The number of threads per block.
+    // Want this to be a multiple of 32, and max of 1024.
+    int blockDimX = 8;
+    int blockDimY = 8;
+
+    dimBlock = dim3(blockDimX, blockDimY);
+
+    // Number of blocks to cover the image given the threads per block.
+    int gridDimX = (cols + blockDimX - 1) / blockDimX;
+    int gridDimY = (rows + blockDimY - 1) / blockDimY;
+
+    dimGrid = dim3(gridDimX, gridDimY); 
 }
