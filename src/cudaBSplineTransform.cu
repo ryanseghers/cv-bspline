@@ -69,6 +69,64 @@ __device__ float bicubicSample(cudaTextureObject_t srcTexture, int width, int he
 
 // -------------------------------------
 
+__device__ int clamp(float x, float a, float b)
+{
+    return max(a, min(b, x));
+}
+
+__device__ float4 cubicInterpolateFloat4(uchar4 p0, uchar4 p1, uchar4 p2, uchar4 p3, float t)
+{
+    float4 val;
+    val.x = cubicInterpolate(p0.x, p1.x, p2.x, p3.x, t);
+    val.y = cubicInterpolate(p0.y, p1.y, p2.y, p3.y, t);
+    val.z = cubicInterpolate(p0.z, p1.z, p2.z, p3.z, t);
+    val.w = cubicInterpolate(p0.w, p1.w, p2.w, p3.w, t);
+    return val;
+}
+
+__device__ float4 cubicInterpolateFloat4(float4 p0, float4 p1, float4 p2, float4 p3, float t)
+{
+    float4 val;
+    val.x = cubicInterpolate(p0.x, p1.x, p2.x, p3.x, t);
+    val.y = cubicInterpolate(p0.y, p1.y, p2.y, p3.y, t);
+    val.z = cubicInterpolate(p0.z, p1.z, p2.z, p3.z, t);
+    val.w = cubicInterpolate(p0.w, p1.w, p2.w, p3.w, t);
+    return val;
+}
+
+/**
+* @brief Sample a single point from the specified source texture using bicubic interpolation.
+*/
+__device__ float4 bicubicSampleFloat4(cudaTextureObject_t srcTexture, int width, int height, float x, float y)
+{
+    int x1 = clamp(static_cast<int>(floor(x)) - 1, 0, width - 1);
+    int y1 = clamp(static_cast<int>(floor(y)) - 1, 0, height - 1);
+    int x2 = clamp(x1 + 1, 0, width - 1);
+    int y2 = clamp(y1 + 1, 0, height - 1);
+    int x3 = clamp(x1 + 2, 0, width - 1);
+    int y3 = clamp(y1 + 2, 0, height - 1);
+    int x4 = clamp(x1 + 3, 0, width - 1);
+    int y4 = clamp(y1 + 3, 0, height - 1);
+
+    float dx = x - x2;
+    float dy = y - y2;
+
+    float4 row_interpolations[4];
+
+    for (int i = 0; i < 4; ++i)
+    {
+        // nearest-neighbor sampling
+        uchar4 p1 = tex2D<uchar4>(srcTexture, x1, y1 + i);
+        uchar4 p2 = tex2D<uchar4>(srcTexture, x2, y1 + i);
+        uchar4 p3 = tex2D<uchar4>(srcTexture, x3, y1 + i);
+        uchar4 p4 = tex2D<uchar4>(srcTexture, x4, y1 + i);
+
+        row_interpolations[i] = cubicInterpolateFloat4(p1, p2, p3, p4, dx);
+    }
+
+    return cubicInterpolateFloat4(row_interpolations[0], row_interpolations[1], row_interpolations[2], row_interpolations[3], dy);
+}
+
 
 __global__ void transformKernel(CudaMat2<uint8_t> outputImage, int samplingType, 
     CudaMat2<float> dxBezierControlPointZs, float dxScale, 
@@ -170,36 +228,46 @@ __global__ void transformKernelBgra(CudaMat2<BgraQuad> outputImage, int sampling
     else if (samplingType == 1)
     {
         // bilinear
-        //x += 0.5f; // sampling offset
-        //y += 0.5f;
+        x += 0.5f; // sampling offset
+        y += 0.5f;
 
-        //// bilinear, returns float
-        //float val = tex2D<float>(srcTexture, x, y);
-        //outputImage.dataDevice[yi * outputImage.stride + xi] = (uint8_t)(val * 255.0f);
+        // bilinear, returns float
+        float4 val = tex2D<float4>(srcTexture, x, y);
+
+        outputImage.dataDevice[yi * outputImage.stride + xi].b = (uint8_t)(val.x * 255.0f);
+        outputImage.dataDevice[yi * outputImage.stride + xi].g = (uint8_t)(val.y * 255.0f);
+        outputImage.dataDevice[yi * outputImage.stride + xi].r = (uint8_t)(val.z * 255.0f);
+        outputImage.dataDevice[yi * outputImage.stride + xi].a = (uint8_t)(val.w * 255.0f);
     }
     else if (samplingType == 2)
     {
         // bicubic
-        // TEMP: outputImage.dataDevice[yi * outputImage.stride + xi] = (uint8_t)123;
 
-        //// need to clamp to border to avoid artifacts
-        //const int borderPx = 2;
-        //int width = outputImage.cols;
-        //int height = outputImage.rows;
+        // need to clamp to border to avoid artifacts
+        const int borderPx = 2;
+        int width = outputImage.cols;
+        int height = outputImage.rows;
 
-        //if ((x >= borderPx) && (x < width - borderPx) && (y >= borderPx) && (y < height - borderPx))
-        //{
-        //    float b = bicubicSample(srcTexture, width, height, x, y);
-        //    int bi = (int)(b + 0.5f);
-        //    bi = max((int)0, min((int)255, bi)); // clamp
-        //    outputImage.dataDevice[yi * outputImage.stride + xi] = (uint8_t)bi;
-        //}
-        //else
-        //{
-        //    // just take the nearest border pixel
-        //    uint8_t val = tex2D<uint8_t>(srcTexture, x + 0.5f, y + 0.5f);
-        //    outputImage.dataDevice[yi * outputImage.stride + xi] = val;
-        //}
+        if ((x >= borderPx) && (x < width - borderPx) && (y >= borderPx) && (y < height - borderPx))
+        {
+            float4 val = bicubicSampleFloat4(srcTexture, width, height, x, y);
+            outputImage.dataDevice[yi * outputImage.stride + xi].b = (uint8_t)clamp(val.x + 0.5f, 0.0f, 255.9f);
+            outputImage.dataDevice[yi * outputImage.stride + xi].g = (uint8_t)clamp(val.y + 0.5f, 0.0f, 255.9f);
+            outputImage.dataDevice[yi * outputImage.stride + xi].r = (uint8_t)clamp(val.z + 0.5f, 0.0f, 255.9f);
+            outputImage.dataDevice[yi * outputImage.stride + xi].a = (uint8_t)clamp(val.w + 0.5f, 0.0f, 255.9f);
+        }
+        else
+        {
+            // just take the nearest border pixel
+            x += 0.5f; // sampling offset
+            y += 0.5f;
+
+            uchar4 val = tex2D<uchar4>(srcTexture, x, y);
+            outputImage.dataDevice[yi * outputImage.stride + xi].b = val.x;
+            outputImage.dataDevice[yi * outputImage.stride + xi].g = val.y;
+            outputImage.dataDevice[yi * outputImage.stride + xi].r = val.z;
+            outputImage.dataDevice[yi * outputImage.stride + xi].a = val.w;
+        }
     }
 }
 

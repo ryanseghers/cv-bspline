@@ -725,7 +725,7 @@ void tryCudaTransformImageGray()
 
 void tryCudaTransformImageBgra()
 {
-    cv::InterpolationFlags interp = cv::INTER_NEAREST; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+    cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
     int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
 
     string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
@@ -759,18 +759,13 @@ void tryCudaTransformImageBgra()
     // bgra
     cv::Mat imgBgra;
     cv::cvtColor(img, imgBgra, cv::COLOR_BGR2BGRA);
-    saveDebugImage(imgBgra, "imgBgra");
+    //saveDebugImage(imgBgra, "imgBgra");
     CudaMat2<BgraQuad> srcCudaBgra = CreateCudaMat<BgraQuad>(imgBgra);
     cv::Mat dstCudaBgra = cv::Mat::zeros(dst.rows, dst.cols, CV_8UC4);
     CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
     cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
     //saveDebugImage(imgBgra, "imgBgra");
     saveDebugImage(dstCudaBgra, "dstCudaBgra");
-
-    //// check if rgb vs bgra is affecting save image
-    //cv::Mat imgSave;
-    //cv::cvtColor(dstCudaBgra, imgSave, cv::COLOR_BGRA2RGB);
-    //saveDebugImage(imgSave, "dstCudaBgra");
 }
 
 int main()
