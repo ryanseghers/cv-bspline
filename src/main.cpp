@@ -768,6 +768,196 @@ void tryCudaTransformImageBgra()
     saveDebugImage(dstCudaBgra, "dstCudaBgra");
 }
 
+void benchTransformImageBgra()
+{
+    cv::InterpolationFlags interp = cv::INTER_NEAREST; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+    int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+    saveDebugImage(img, "orig");
+
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+    cv::Mat dst;
+
+    // random distortion
+    imageTransform.setRandomDistortion(-5, 5);
+
+    // CPU
+    int nCycles;
+
+#if _DEBUG
+    nCycles = 1;
+#else
+    nCycles = 100;
+#endif
+
+    auto startTime = CppBaseUtil::getTimeNow();
+
+    for (int i = 0; i < nCycles; i++)
+    {
+        imageTransform.transformImage(img, interp, dst);
+    }
+
+    fmt::println("CPU: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
+    saveDebugImage(dst, "cpu");
+
+    // CUDA
+    int deviceId = 0;
+
+    cv::Mat dxs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dys = imageTransform.getDyGrid().getControlPointZs();
+    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxs);
+    CudaMat2<float> cudaDys = CreateCudaMat<float>(dys);
+
+    // scale is how the grid relates to the image pixels
+    int bSplineGridRows = imageTransform.getDxGrid().rows();
+    int bSplineGridCols = imageTransform.getDxGrid().cols();
+    float dxScale = (float)dst.cols / bSplineGridCols; // pixels per cell
+    float dyScale = (float)dst.rows / bSplineGridRows; // pixels per cell
+
+    // bgra
+    cv::Mat imgBgra;
+    cv::cvtColor(img, imgBgra, cv::COLOR_BGR2BGRA);
+    CudaMat2<BgraQuad> srcCudaBgra = CreateCudaMat<BgraQuad>(imgBgra);
+    cv::Mat dstCudaBgra = cv::Mat::zeros(dst.rows, dst.cols, CV_8UC4);
+    CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
+
+    startTime = CppBaseUtil::getTimeNow();
+
+    for (int i = 0; i < nCycles; i++)
+    {
+        cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
+    }
+
+    fmt::println("CUDA: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
+
+    //saveDebugImage(imgBgra, "imgBgra");
+    saveDebugImage(dstCudaBgra, "dstCudaBgra");
+}
+
+void runImageTransformCpu(int nCycles, cv::InterpolationFlags interp, ImageTransformBSpline& imageTransform, cv::Mat& img)
+{
+    cv::Mat dst;
+
+    for (int i = 0; i < nCycles; i++)
+    {
+        imageTransform.transformImage(img, interp, dst);
+    }
+}
+
+void runImageTransformCuda(int nCycles, cv::InterpolationFlags interp, ImageTransformBSpline& imageTransform, cv::Mat& imgBgra)
+{
+    int deviceId = 0;
+    int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
+
+    cv::Mat dxs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dys = imageTransform.getDyGrid().getControlPointZs();
+    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxs);
+    CudaMat2<float> cudaDys = CreateCudaMat<float>(dys);
+
+    // scale is how the grid relates to the image pixels
+    int bSplineGridRows = imageTransform.getDxGrid().rows();
+    int bSplineGridCols = imageTransform.getDxGrid().cols();
+    float dxScale = (float)imgBgra.cols / bSplineGridCols; // pixels per cell
+    float dyScale = (float)imgBgra.rows / bSplineGridRows; // pixels per cell
+
+    // bgra
+    CudaMat2<BgraQuad> srcCudaBgra = CreateCudaMat<BgraQuad>(imgBgra);
+    cv::Mat dstCudaBgra = cv::Mat::zeros(imgBgra.rows, imgBgra.cols, CV_8UC4);
+    CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
+
+    for (int i = 0; i < nCycles; i++)
+    {
+        cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
+    }
+}
+
+void benchThroughputTransformImageBgra()
+{
+    cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+    int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
+    fmt::println("Sampling type: {0}", samplingType);
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+    saveDebugImage(img, "orig");
+    fmt::println("RGB Image size: {0} x {1}", img.cols, img.rows);
+
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+    cv::Mat dst;
+
+    // random distortion
+    imageTransform.setRandomDistortion(-5, 5);
+
+    // CPU
+    int nCycles;
+
+#if _DEBUG
+    nCycles = 1;
+#else
+    nCycles = 100;
+#endif
+
+    // warmup, and build the ramp images
+    //fmt::println("CPU throughput (ms)");
+    //fmt::println("nThreads, transformsPerSecond");
+    //imageTransform.transformImage(img, interp, dst);
+
+    //for (int nThreads = 1; nThreads <= 24; nThreads++)
+    //{
+    //    auto startTime = CppBaseUtil::getTimeNow();
+
+    //    // Start N threads each spinning running the transform for nCycles
+    //    std::vector<std::thread> threads;
+
+    //    for (int i = 0; i < nThreads; i++)
+    //    {
+    //        threads.push_back(std::thread(runImageTransformCpu, nCycles, interp, std::ref(imageTransform), std::ref(img)));
+    //    }
+
+    //    for (auto& t : threads)
+    //    {
+    //        t.join();
+    //    }
+
+    //    int totalTransformsRun = nThreads * nCycles;
+    //    fmt::println("{0}, {1:.1f}", nThreads, totalTransformsRun / CppBaseUtil::getDurationSeconds(startTime));
+    //}
+
+    // CUDA
+ 
+    // warmup, and build the ramp images
+    fmt::println("CUDA throughput");
+    fmt::println("nThreads, transformsPerSecond");
+    cv::Mat imgBgra;
+    cv::cvtColor(img, imgBgra, cv::COLOR_BGR2BGRA);
+
+    runImageTransformCuda(nCycles, interp, imageTransform, imgBgra);
+    fmt::println("Done warmup");
+
+    for (int nThreads = 1; nThreads <= 24; nThreads++)
+    {
+        auto startTime = CppBaseUtil::getTimeNow();
+
+        // Start N threads each spinning running the transform for nCycles
+        std::vector<std::thread> threads;
+
+        for (int i = 0; i < nThreads; i++)
+        {
+            threads.push_back(std::thread(runImageTransformCuda, nCycles, interp, std::ref(imageTransform), std::ref(imgBgra)));
+        }
+
+        for (auto& t : threads)
+        {
+            t.join();
+        }
+
+        int totalTransformsRun = nThreads * nCycles;
+        fmt::println("{0}, {1:.1f}", nThreads, totalTransformsRun / CppBaseUtil::getDurationSeconds(startTime));
+    }
+}
+
 int main()
 {
     fmt::print("Starting...\n");
@@ -777,7 +967,9 @@ int main()
 #ifndef _DEBUG
     //benchmarkBSplineSurface();
     //tryBSplineGridDeformImage();
-    tryImageTransformBSpline();
+    //tryImageTransformBSpline();
+    //benchTransformImageBgra();
+    benchThroughputTransformImageBgra();
     return 0;
 #endif
 
@@ -800,7 +992,8 @@ int main()
     //tryAllComputeBezierControlPoints();
     //tryCudaEvalBSpline();
     //tryCudaTransformImageGray();
-    tryCudaTransformImageBgra();
+    //tryCudaTransformImageBgra();
+    benchThroughputTransformImageBgra();
 
     fmt::print("Done.\n");
     return 0;

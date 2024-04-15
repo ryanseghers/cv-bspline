@@ -73,3 +73,39 @@ Similarly for the last segment, the last point (m) is not strictly computable, b
 
 This affects data structures and indexing because if we store 3 points per segment, then point m is in a final, 5th, segment.
 And thus for 5 b-spline control points we have 4 segments, all of which are (non-strictly) computable, requiring storing 5 segments worth of points (because the code generally works in units of segments). 
+
+## Benchmarks
+
+# CPU Throughput in Transformations per Second
+
+Bicubic sampling.
+On a 13900K (underclocked due to stability issues):
+
+nThreads, transformsPerSecond
+1, 26.2
+2, 51.7
+3, 72.4
+4, 89.5
+5, 102.1
+6, 112.6
+7, 122.2
+8, 132.5
+9, 135.3
+10, 138.0
+11, 139.9
+12, 141.9
+13, 144.2
+14, 144.4
+15, 145.8
+16, 145.6
+17, 146.9
+18, 147.2
+19, 146.8
+20, 147.6
+21, 147.8
+22, 147.8
+23, 148.9
+24, 147.5
+
+The equivalent op on my RTX 4090 is 640 transforms per second, and multiple threads do not improve throughput.
+The throughput is not different between nearest-neighbor sampling and bicubic sampling.
