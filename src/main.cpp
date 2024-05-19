@@ -45,6 +45,24 @@ void tryBezierCurve()
     saveDebugImage(plotImg, "bezier-points");
 }
 
+void tryBezierCurveFit()
+{
+    // Going through three points
+    cv::Point2f p0(0, 0);
+    //cv::Point2f p1(1, 2);
+    //cv::Point2f p2(2, 2);
+    cv::Point2f p3(3, 1);
+    cv::Point2f pmid(1.5f, 1.6f);
+    vector<cv::Point2f> points = { p0, pmid, p3 };
+
+    vector<cv::Point2f> fittedPoints = fitBezierCurveCubic(points);
+
+    vector<cv::Point2f> evalPoints;
+    evalBezierCurveCubic(fittedPoints, 100, evalPoints);
+    cv::Mat plotImg = plotPointsAndCurve("Bezier Points", fittedPoints, evalPoints);
+    saveDebugImage(plotImg, "bezier-points");
+}
+
 void tryBSplineCurve()
 {
     cv::Point2f p0(0, 0);
@@ -471,10 +489,12 @@ void tryMatWave()
 int pxPerCell = 16;
 cv::Mat dxControlMatZs;
 cv::Mat dyControlMatZs;
+bool isMouseDown = false;
+cv::Point2f mouseStartPoint, mouseEndPoint;
 
-void mouseCallback(int event, int x, int y, int flags, void* userdata) 
+void mouseCallbackWave(int event, int x, int y, int flags, void* userdata) 
 {
-    if (event == cv::EVENT_LBUTTONDOWN) 
+    if (event == cv::EVENT_LBUTTONDOWN)
     {
         std::cout << "Left button clicked at (" << x << ", " << y << ")" << std::endl;
 
@@ -486,67 +506,70 @@ void mouseCallback(int event, int x, int y, int flags, void* userdata)
     }
 }
 
-void tryImageTransformBSpline()
+/**
+ * @brief Adjust control points based on mouse drag.
+ */
+void fitMouseDrag()
 {
-    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
-    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+    // +1 because control points go outside of surface
+    int xi = mouseStartPoint.x / pxPerCell + 1;
+    int yi = mouseStartPoint.y / pxPerCell + 1;
 
-    ImageTransformBSpline imageTransform(img, pxPerCell);
-    cv::Mat dst;
-    //imageTransform.transformImage(img, cv::INTER_CUBIC, dst);
-    //saveDebugImage(dst, "dst");
+    float dx = mouseEndPoint.x - mouseStartPoint.x;
+    float dy = mouseEndPoint.y - mouseStartPoint.y;
+    float height = sqrtf(dx * dx + dy * dy);
 
-    //// random distortion
-    //imageTransform.setRandomDistortion(-10, 10);
-    //imageTransform.transformImage(img, cv::INTER_CUBIC, dst);
-    //saveDebugImage(dst, "dst");
+    // Simple drag single cell to get started.
+    //dxControlMatZs.at<float>(yi, xi) = -dx;
+    //dyControlMatZs.at<float>(yi, xi) = -dy;
 
-    // wave
-    dxControlMatZs = imageTransform.getDxGrid().getControlPointZs();
-    dyControlMatZs = imageTransform.getDyGrid().getControlPointZs();
-
-    float k = 0.1f; // spring constant
-    float m = 1.0f; // mass
-    float friction = 1.0f - 0.015f;
-
-    MatWave dxWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
-    MatWave dyWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
-    int nCycles = 100;
-
-    // initial perturbation
-    int xCenter = dxControlMatZs.cols / 2;
-    int yCenter = dxControlMatZs.rows / 2;
-    //dxControlMatZs.at<float>(yCenter, xCenter) = 50.0f; // initial wave
-    //dyControlMatZs.at<float>(yCenter, xCenter) = 50.0f; // initial wave
-
-    //// save debug images 
-    //for (int i = 0; i < nCycles; ++i)
-    //{
-    //    fmt::println("Step {}", i);
-
-    //    dxWave.apply(dxControlMatZs);
-    //    dyWave.apply(dyControlMatZs);
-
-    //    imageTransform.transformImage(img, cv::INTER_CUBIC, dst);
-    //    saveDebugImage(dst, "dst");
-    //}
-
-    // interactive window
-    cv::namedWindow("Image", cv::WINDOW_AUTOSIZE);
-    cv::setMouseCallback("Image", mouseCallback);
-
-    while(true)
+    // try dragging pulls up control points in a cone around the drag end point
+    // just iterate all control points
+    for (int r = 0; r < dxControlMatZs.rows; r++)
     {
-        dxWave.apply(dxControlMatZs);
-        dyWave.apply(dyControlMatZs);
+        for (int c = 0; c < dxControlMatZs.cols; c++)
+        {
+            float cellx = c * pxPerCell;
+            float celly = r * pxPerCell;
 
-        imageTransform.transformImage(img, cv::INTER_LINEAR, dst);
+            float cellDx = cellx - mouseEndPoint.x;
+            float cellDy = celly - mouseEndPoint.y;
+            float cellDist = sqrtf(cellDx * cellDx + cellDy * cellDy);
 
-        cv::imshow("Image", dst);
-        cv::waitKey(10);
+            if (cellDist < height)
+            {
+                // We're within radius of the cone
+                dxControlMatZs.at<float>(r, c) = -(height - cellDist);
+                //dyControlMatZs.at<float>(r, c) = -cellDist;
+            }
+        }
     }
+}
 
-    cv::destroyAllWindows();
+void mouseCallbackFitting(int event, int x, int y, int flags, void* userdata)
+{
+    if (event == cv::EVENT_LBUTTONDOWN)
+    {
+        fmt::println("Left button down at: {0}, {1}", x, y);
+        mouseStartPoint.x = x;
+        mouseStartPoint.y = y;
+        isMouseDown = true;
+    }
+    else if (isMouseDown && (event == cv::EVENT_MOUSEMOVE))
+    {
+        mouseEndPoint.x = x;
+        mouseEndPoint.y = y;
+        //fmt::println("Drag from: ({0:.1f}, {1:.1f}) to ({2:.1f}, {3:.1f})", mouseStartPoint.x, mouseStartPoint.y, mouseEndPoint.x, mouseEndPoint.y);
+        fitMouseDrag();
+    }
+    else if (event == cv::EVENT_LBUTTONUP)
+    {
+        mouseEndPoint.x = x;
+        mouseEndPoint.y = y;
+        fmt::println("Left button up at: {0}, {1}", x, y);
+        isMouseDown = false;
+        //fitMouseDrag();
+    }
 }
 
 // CudaMat is just a wrapper, no memory ownership.
@@ -565,6 +588,104 @@ CudaMat2<T> CreateCudaMat(cv::Mat mat)
     cudaMat.stride = mat.step[0] / sizeof(T);
 
     return cudaMat;
+}
+
+void showImageTransformBSpline()
+{
+    bool doCpu = false;
+    bool doWaves = false;
+
+    cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+    cv::Mat dst;
+
+    // wave
+    dxControlMatZs = imageTransform.getDxGrid().getControlPointZs();
+    dyControlMatZs = imageTransform.getDyGrid().getControlPointZs();
+
+    float k = 0.1f; // spring constant
+    float m = 1.0f; // mass
+    float friction = 1.0f - 0.015f;
+
+    MatWave dxWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
+    MatWave dyWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
+
+    // initial perturbation
+    int xCenter = dxControlMatZs.cols / 2;
+    int yCenter = dxControlMatZs.rows / 2;
+
+    // Setup for CUDA
+    int deviceId = 0;
+    int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
+
+    cv::Mat dxs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dys = imageTransform.getDyGrid().getControlPointZs();
+    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxs);
+    CudaMat2<float> cudaDys = CreateCudaMat<float>(dys);
+
+    cv::Mat imgBgra;
+    cv::cvtColor(img, imgBgra, cv::COLOR_BGR2BGRA);
+
+    int bSplineGridRows = imageTransform.getDxGrid().rows();
+    int bSplineGridCols = imageTransform.getDxGrid().cols();
+    float dxScale = (float)imgBgra.cols / bSplineGridCols; // pixels per cell
+    float dyScale = (float)imgBgra.rows / bSplineGridRows; // pixels per cell
+
+    // bgra
+    CudaMat2<BgraQuad> srcCudaBgra = CreateCudaMat<BgraQuad>(imgBgra);
+    cv::Mat dstCudaBgra = cv::Mat::zeros(imgBgra.rows, imgBgra.cols, CV_8UC4);
+    CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
+
+    // interactive window
+    cv::namedWindow("Image", cv::WINDOW_NORMAL);
+    cv::setWindowProperty("Image", cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+
+    if (doWaves)
+    {
+        cv::setMouseCallback("Image", mouseCallbackWave);
+    }
+    else
+    {
+        cv::setMouseCallback("Image", mouseCallbackFitting);
+    }
+
+    while(true)
+    {
+        // Not doing wave right now
+        if (doWaves)
+        {
+            dxWave.apply(dxControlMatZs);
+            dyWave.apply(dyControlMatZs);
+        }
+
+        if (doCpu)
+        {
+            imageTransform.transformImage(img, interp, dst);
+        }
+        else
+        {
+            cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
+            cv::cvtColor(dstCudaBgra, dst, cv::COLOR_BGRA2BGR);
+        }
+
+        cv::imshow("Image", dst);
+        int key = cv::waitKey(10);
+
+        if (key >= 0)
+        {
+            if (key == 27) // esc
+            {
+                break;
+            }
+            fmt::print("Key: {0}", key);
+        }
+    }
+
+    cv::destroyAllWindows();
 }
 
 // Run and compare all the implementations
@@ -773,12 +894,13 @@ void benchTransformImageBgra()
     cv::InterpolationFlags interp = cv::INTER_NEAREST; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
     int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
 
-    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    //string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    string imgPath = "C:/Temp/PXL_20230914_161024366.jpg";
     cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
-    saveDebugImage(img, "orig");
+    //saveDebugImage(img, "orig");
 
     ImageTransformBSpline imageTransform(img, pxPerCell);
-    cv::Mat dst;
+    cv::Mat dst = cv::Mat(img.rows, img.cols, CV_8UC3);
 
     // random distortion
     imageTransform.setRandomDistortion(-5, 5);
@@ -789,18 +911,18 @@ void benchTransformImageBgra()
 #if _DEBUG
     nCycles = 1;
 #else
-    nCycles = 100;
+    nCycles = 1;
 #endif
 
-    auto startTime = CppBaseUtil::getTimeNow();
+    //auto startTime = CppBaseUtil::getTimeNow();
 
-    for (int i = 0; i < nCycles; i++)
-    {
-        imageTransform.transformImage(img, interp, dst);
-    }
+    //for (int i = 0; i < nCycles; i++)
+    //{
+    //    imageTransform.transformImage(img, interp, dst);
+    //}
 
-    fmt::println("CPU: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
-    saveDebugImage(dst, "cpu");
+    //fmt::println("CPU: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
+    //saveDebugImage(dst, "cpu");
 
     // CUDA
     int deviceId = 0;
@@ -823,17 +945,17 @@ void benchTransformImageBgra()
     cv::Mat dstCudaBgra = cv::Mat::zeros(dst.rows, dst.cols, CV_8UC4);
     CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
 
-    startTime = CppBaseUtil::getTimeNow();
+    auto startTimeCuda = CppBaseUtil::getTimeNow();
 
     for (int i = 0; i < nCycles; i++)
     {
         cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
     }
 
-    fmt::println("CUDA: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
+    fmt::println("CUDA: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTimeCuda) * 1000.0f / nCycles);
 
     //saveDebugImage(imgBgra, "imgBgra");
-    saveDebugImage(dstCudaBgra, "dstCudaBgra");
+    //saveDebugImage(dstCudaBgra, "dstCudaBgra");
 }
 
 void runImageTransformCpu(int nCycles, cv::InterpolationFlags interp, ImageTransformBSpline& imageTransform, cv::Mat& img)
@@ -967,14 +1089,14 @@ int main()
 #ifndef _DEBUG
     //benchmarkBSplineSurface();
     //tryBSplineGridDeformImage();
-    //tryImageTransformBSpline();
+    showImageTransformBSpline();
     //benchTransformImageBgra();
-    benchThroughputTransformImageBgra();
+    //benchThroughputTransformImageBgra();
     return 0;
 #endif
 
     //tryCvPlot();
-    //tryBezierCurve();
+    tryBezierCurve();
     //tryBSplineCurve();
     //tryGnuPlot();
     //tryBezierSurface();
@@ -987,13 +1109,13 @@ int main()
     //tryBSplineGrid();
     //tryMatWave();
     //tryBSplineGridDeformImage();
-    //tryImageTransformBSpline();
+    //showImageTransformBSpline();
     //tryMatStrides();
     //tryAllComputeBezierControlPoints();
     //tryCudaEvalBSpline();
     //tryCudaTransformImageGray();
     //tryCudaTransformImageBgra();
-    benchThroughputTransformImageBgra();
+    tryBezierCurveFit();
 
     fmt::print("Done.\n");
     return 0;

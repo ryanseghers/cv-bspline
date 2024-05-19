@@ -20,4 +20,6 @@ namespace CvImageDeform
     * @param outputPoints Output points, nPointsDim^2 in total.
     */
     void evalBezierSurfaceCubic(const std::vector<std::vector<cv::Point3f>>& controlPoints, int nPointsDim, int yStart, std::vector<std::vector<cv::Point3f>>& outputPoints);
+
+    std::vector<cv::Point2f> fitBezierCurveCubic(const std::vector<cv::Point2f>& threePoints);
 }

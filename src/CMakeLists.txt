@@ -22,6 +22,13 @@ endif()
 
 set(CMAKE_CUDA_FLAGS "-std=c++20")
 
+IF (WIN32)
+    # For VS instrumentation profiler
+    # Enable these lines, then do a clean build, then run analyzer from exe.
+    #add_link_options("/PROFILE")
+    #set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+endif()
+
 # other dependencies
 find_package(fmt CONFIG REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
@@ -99,6 +106,9 @@ set(SOURCE_FILES
 
 	cudaBSplineTransform.h
 	cudaBSplineTransform.cu
+
+	fitCurves/fitCurves.h
+	fitCurves/fitCurves.cpp
 
 	main.cpp
 )

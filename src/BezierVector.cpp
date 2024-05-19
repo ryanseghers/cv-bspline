@@ -1,6 +1,7 @@
 #include <immintrin.h>
 #include "BezierVector.h"
 #include "BezierUtil.h"
+#include "fitCurves/fitCurves.h"
 
 using namespace std;
 
@@ -30,6 +31,43 @@ namespace CvImageDeform
             cv::Point2f p = evalBezierCurveCubicPoint(controlPoints, t);
             outputPoints.push_back(p);
         }
+    }
+
+    // Fit three points with a curve (represented by the normal four bezier control points).
+    vector<cv::Point2f> fitBezierCurveCubic(const vector<cv::Point2f>& threePoints)
+    {
+        vector<cv::Point2d> points;
+        for (int i = 0; i < threePoints.size(); i++)
+        {
+            points.push_back(cv::Point2d(threePoints[i]));
+        }
+
+        double error = 1.0;
+        vector<BezierCurve> fitted = FitCurve(points, 0, points.size(), error);
+
+        if (fitted.size() > 1)
+        {
+            throw std::runtime_error("Multiple fitted curves not handled yet.");
+        }
+
+        vector<cv::Point2f> results;
+        results.push_back(cv::Point2f(fitted[0].pt1));
+
+        // seem to get control points out of x order
+        if (fitted[0].c2.x < fitted[0].c1.x)
+        {
+            results.push_back(cv::Point2f(fitted[0].c2));
+            results.push_back(cv::Point2f(fitted[0].c1));
+        }
+        else
+        {
+            results.push_back(cv::Point2f(fitted[0].c1));
+            results.push_back(cv::Point2f(fitted[0].c2));
+        }
+
+        results.push_back(cv::Point2f(fitted[0].pt2));
+
+        return results;
     }
 
     // Eval the bezier surface at a single point.
