@@ -93,4 +93,33 @@ namespace CvImageDeform
             }
         }
     }
+
+    std::vector<cv::Point2f> fitBSplineCurveCubic(const std::vector<cv::Point2f>& inputPoints, int nth)
+    {
+        if (nth < 3)
+        {
+            throw std::runtime_error("fitBSplineCurveCubic: nth must be >= 3");
+        }
+
+        vector<cv::Point2f> resultPoints;
+
+        for (int i = 0; i < inputPoints.size() - nth; i += nth - 1)
+        {
+            vector<cv::Point2f> thisPoints;
+
+            for (int j = 0; j < nth; j++)
+            {
+                thisPoints.push_back(inputPoints[i + j]);
+            }
+
+            vector<cv::Point2f> fitted = fitBezierCurveCubic(thisPoints);
+
+            for (int j = 0; j < fitted.size(); j++)
+            {
+                resultPoints.push_back(fitted[j]);
+            }
+        }
+
+        return resultPoints;
+    }
 }

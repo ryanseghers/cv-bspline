@@ -14,6 +14,8 @@ namespace CvImageDeform
         BSplineGrid dxGrid;
         BSplineGrid dyGrid;
 
+        float pxPerCell;
+
         // Pre-computed x and y coordinates for remap.
         cv::Mat xcoords;
         cv::Mat ycoords;
@@ -28,8 +30,9 @@ namespace CvImageDeform
 
         BSplineGrid& getDxGrid() { return dxGrid; }
         BSplineGrid& getDyGrid() { return dyGrid; }
+        float getPxPerCell() { return pxPerCell; }
 
-        void transformImage(const cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage);
+        void transformImage(const cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage, bool doDebug);
 
         void setRandomDistortion(float min, float max);
     };

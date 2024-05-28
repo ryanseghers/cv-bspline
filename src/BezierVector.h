@@ -21,5 +21,12 @@ namespace CvImageDeform
     */
     void evalBezierSurfaceCubic(const std::vector<std::vector<cv::Point3f>>& controlPoints, int nPointsDim, int yStart, std::vector<std::vector<cv::Point3f>>& outputPoints);
 
-    std::vector<cv::Point2f> fitBezierCurveCubic(const std::vector<cv::Point2f>& threePoints);
+    /**
+     * @brief Fit the input points with a single Bezier curve.
+     * Internally this could subdivide the input points and recurse and thus produce more than one Bezier curve
+     * but that is not finished.
+     * @param inputPoints Three or more input points.
+     * @return The four Bezier control points.
+     */
+    std::vector<cv::Point2f> fitBezierCurveCubic(const std::vector<cv::Point2f>& inputPoints);
 }

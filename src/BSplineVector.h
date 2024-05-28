@@ -23,4 +23,12 @@ namespace CvImageDeform
     */
     void evalBSplineSurfaceCubic(const std::vector<std::vector<cv::Point3f>>& controlPoints, int nPointsDim, 
         std::vector<std::vector<cv::Point3f>>& outputPoints, bool doDebug = false);
+
+    /**
+    * @brief Fit the input (uniform, sorted) points with a B-spline curve.
+    * @param inputPoints Three or more input points.
+    * @param nth How many points define each B-spline cell. This must be gte 3.
+    * @return The four Bezier control points.
+    */
+    std::vector<cv::Point2f> fitBSplineCurveCubic(const std::vector<cv::Point2f>& inputPoints, int nth);
 }

@@ -34,14 +34,16 @@ namespace CvImageDeform
     }
 
     // Fit three points with a curve (represented by the normal four bezier control points).
-    vector<cv::Point2f> fitBezierCurveCubic(const vector<cv::Point2f>& threePoints)
+    vector<cv::Point2f> fitBezierCurveCubic(const vector<cv::Point2f>& inputPoints)
     {
+        // to doubles
         vector<cv::Point2d> points;
-        for (int i = 0; i < threePoints.size(); i++)
+        for (int i = 0; i < inputPoints.size(); i++)
         {
-            points.push_back(cv::Point2d(threePoints[i]));
+            points.push_back(cv::Point2d(inputPoints[i]));
         }
 
+        // fit
         double error = 1.0;
         vector<BezierCurve> fitted = FitCurve(points, 0, points.size(), error);
 
@@ -50,6 +52,7 @@ namespace CvImageDeform
             throw std::runtime_error("Multiple fitted curves not handled yet.");
         }
 
+        // back to float
         vector<cv::Point2f> results;
         results.push_back(cv::Point2f(fitted[0].pt1));
 

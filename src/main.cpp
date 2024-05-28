@@ -81,6 +81,57 @@ void tryBSplineCurve()
     saveDebugImage(plotImg, "b-spline-points");
 }
 
+/**
+ * @brief Eval gaussian with mean 0 and sigma 1.
+ */
+float gaussianf(float x) 
+{
+    float sigma = 1.0f; // Standard deviation
+    return std::expf(-0.5f * std::powf(x / sigma, 2));
+}
+
+/**
+* @brief Using the gaussian function in a geometric sense, just for its shape.
+* @param halfWidth Half width of peak.
+* @param height Max height of peak.
+* @param center X center of peak.
+* @param x Evaluate the function at this x.
+*/
+float gaussianScaledf(float halfWidth, float height, float center, float x)
+{
+    float xOffset = x - center;
+    float xScaled = xOffset / (halfWidth / 2);
+    float g = gaussianf(xScaled) * height;
+    return g;
+}
+
+void tryBSplineCurveFit()
+{
+    vector<cv::Point2f> inputPoints;
+    float xSpacing = 1.0f;
+    int n = 10;
+    float xCenter = ((n - 1) * xSpacing) / 2;
+
+    for (float x = 0.0f; x < n; x += xSpacing)
+    {
+        float dx = x - xCenter;
+        float y = gaussianf(2 * dx / n);
+        inputPoints.push_back(cv::Point2f(x, y));
+    }
+
+    // eval the inputs directly as b-spline control points
+    auto evalPoints = evalBSplineCurveCubic(inputPoints, 100);
+    cv::Mat plotImg = plotPointsAndCurve("Input Points as B-spline Control Points", inputPoints, evalPoints);
+    saveDebugImage(plotImg, "b-spline-points");
+
+    // fitting
+    vector<cv::Point2f> fittedPoints = fitBSplineCurveCubic(inputPoints, 3);
+
+    evalPoints = evalBSplineCurveCubic(fittedPoints, 100);
+    plotImg = plotPointsAndCurve("Fitted B-spline Points", inputPoints, evalPoints);
+    saveDebugImage(plotImg, "b-spline-points-fitted");
+}
+
 void tryBezierSurface()
 {
     vector<vector<cv::Point3f>> controlPoints = 
@@ -486,9 +537,64 @@ void tryMatWave()
     }
 }
 
+void applyGaussianDomeDeformation(ImageTransformBSpline& imageTransform, float halfWidth, cv::Point2f deformCenter,
+    cv::Point2f offsetVector, bool doDebug)
+{
+    float pxPerCell = imageTransform.getPxPerCell();
+    cv::Mat dxControlMatZs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dyControlMatZs = imageTransform.getDyGrid().getControlPointZs();
+
+    // Limit the height (magnitude of offset) vs half-width by widening
+    float offsetMag = sqrtf(offsetVector.x * offsetVector.x + offsetVector.y * offsetVector.y);
+    halfWidth = max(offsetMag, halfWidth);
+
+    cv::Mat xtmp(dxControlMatZs.rows - 2, dxControlMatZs.cols - 2, CV_32F);
+    cv::Mat ytmp(dxControlMatZs.rows - 2, dxControlMatZs.cols - 2, CV_32F);
+
+    for (int r = 1; r < dxControlMatZs.rows - 1; r++)
+    {
+        for (int c = 1; c < dxControlMatZs.cols - 1; c++)
+        {
+            float cellx = (c - 1) * pxPerCell;
+            float celly = (r - 1) * pxPerCell;
+
+            float cellDx = cellx - deformCenter.x;
+            float cellDy = celly - deformCenter.y;
+            float cellDist = sqrtf(cellDx * cellDx + cellDy * cellDy);
+
+            // use gaussians to decide how to stretch, per axis
+            float x1 = gaussianScaledf(halfWidth, offsetVector.x, deformCenter.x, cellx);
+            float y1 = gaussianScaledf(halfWidth, offsetVector.y, deformCenter.y, celly);
+
+            // Less offset based on dist from cell to mouse start point
+            float distDamper = gaussianScaledf(halfWidth, 1.0f, 0.0f, cellDist);
+
+            float xo = x1 * distDamper;
+            float yo = y1 * distDamper;
+
+            dxControlMatZs.at<float>(r, c) = -xo;
+            dyControlMatZs.at<float>(r, c) = -yo;
+
+            xtmp.at<float>(r - 1, c - 1) = xo;
+            ytmp.at<float>(r - 1, c - 1) = yo;
+        }
+    }
+
+    if (doDebug)
+    {
+        saveDebugImage(xtmp, "x-offset-values");
+        saveDebugImage(ytmp, "y-offset-values");
+    }
+}
+
+const int waveBorderWidth = 2; // in cells
 int pxPerCell = 16;
-cv::Mat dxControlMatZs;
-cv::Mat dyControlMatZs;
+ImageTransformBSpline* pImageTransform = nullptr;
+MatWave* dxWave = nullptr;
+MatWave* dyWave = nullptr;
+
+//cv::Mat dxControlMatZs;
+//cv::Mat dyControlMatZs;
 bool isMouseDown = false;
 cv::Point2f mouseStartPoint, mouseEndPoint;
 
@@ -498,11 +604,19 @@ void mouseCallbackWave(int event, int x, int y, int flags, void* userdata)
     {
         std::cout << "Left button clicked at (" << x << ", " << y << ")" << std::endl;
 
+        cv::Mat dxControlMatZs = pImageTransform->getDxGrid().getControlPointZs();
+        cv::Mat dyControlMatZs = pImageTransform->getDyGrid().getControlPointZs();
+
         // control points are outside of the surface
         int xi = x / pxPerCell;
         int yi = y / pxPerCell;
-        dxControlMatZs.at<float>(yi + 1, xi + 1) = 50.0f;
-        dyControlMatZs.at<float>(yi + 1, xi + 1) = 50.0f;
+
+        if ((xi >= waveBorderWidth) && (xi < dxControlMatZs.cols - 1 - waveBorderWidth * 2)
+            && (yi >= waveBorderWidth) && (yi < dyControlMatZs.rows - 1 - waveBorderWidth * 2))
+        {
+            dxControlMatZs.at<float>(yi + 1, xi + 1) = 50.0f;
+            dyControlMatZs.at<float>(yi + 1, xi + 1) = 50.0f;
+        }
     }
 }
 
@@ -512,37 +626,27 @@ void mouseCallbackWave(int event, int x, int y, int flags, void* userdata)
 void fitMouseDrag()
 {
     // +1 because control points go outside of surface
-    int xi = mouseStartPoint.x / pxPerCell + 1;
-    int yi = mouseStartPoint.y / pxPerCell + 1;
+    int xi = lroundf(mouseStartPoint.x / pxPerCell) + 1;
+    int yi = lroundf(mouseStartPoint.y / pxPerCell) + 1;
 
-    float dx = mouseEndPoint.x - mouseStartPoint.x;
-    float dy = mouseEndPoint.y - mouseStartPoint.y;
-    float height = sqrtf(dx * dx + dy * dy);
+    cv::Point2f offset = mouseEndPoint - mouseStartPoint;
 
-    // Simple drag single cell to get started.
-    //dxControlMatZs.at<float>(yi, xi) = -dx;
-    //dyControlMatZs.at<float>(yi, xi) = -dy;
+    // Lock the 4 mouse start points and apply offset
+    vector<cv::Point2i> lockedPoints;
+    lockedPoints.push_back(cv::Point2i(xi, yi));
+    lockedPoints.push_back(cv::Point2i(xi + 1, yi));
+    lockedPoints.push_back(cv::Point2i(xi, yi + 1));
+    lockedPoints.push_back(cv::Point2i(xi + 1, yi + 1));
+    dxWave->setLockedPoints(lockedPoints);
+    dyWave->setLockedPoints(lockedPoints);
 
-    // try dragging pulls up control points in a cone around the drag end point
-    // just iterate all control points
-    for (int r = 0; r < dxControlMatZs.rows; r++)
+    cv::Mat dxControlMatZs = pImageTransform->getDxGrid().getControlPointZs();
+    cv::Mat dyControlMatZs = pImageTransform->getDyGrid().getControlPointZs();
+
+    for (int i = 0; i < lockedPoints.size(); i++)
     {
-        for (int c = 0; c < dxControlMatZs.cols; c++)
-        {
-            float cellx = c * pxPerCell;
-            float celly = r * pxPerCell;
-
-            float cellDx = cellx - mouseEndPoint.x;
-            float cellDy = celly - mouseEndPoint.y;
-            float cellDist = sqrtf(cellDx * cellDx + cellDy * cellDy);
-
-            if (cellDist < height)
-            {
-                // We're within radius of the cone
-                dxControlMatZs.at<float>(r, c) = -(height - cellDist);
-                //dyControlMatZs.at<float>(r, c) = -cellDist;
-            }
-        }
+        dxControlMatZs.at<float>(lockedPoints[i].y, lockedPoints[i].x) = -offset.x;
+        dyControlMatZs.at<float>(lockedPoints[i].y, lockedPoints[i].x) = -offset.y;
     }
 }
 
@@ -600,19 +704,22 @@ void showImageTransformBSpline()
     string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
     cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
 
-    ImageTransformBSpline imageTransform(img, pxPerCell);
+    pImageTransform = new ImageTransformBSpline(img, pxPerCell);
     cv::Mat dst;
 
     // wave
-    dxControlMatZs = imageTransform.getDxGrid().getControlPointZs();
-    dyControlMatZs = imageTransform.getDyGrid().getControlPointZs();
+    cv::Mat dxControlMatZs = pImageTransform->getDxGrid().getControlPointZs();
+    cv::Mat dyControlMatZs = pImageTransform->getDyGrid().getControlPointZs();
 
     float k = 0.1f; // spring constant
     float m = 1.0f; // mass
     float friction = 1.0f - 0.015f;
 
-    MatWave dxWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
-    MatWave dyWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
+    dxWave = new MatWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
+    dyWave = new MatWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
+
+    dxWave->setLockedBorder(waveBorderWidth);
+    dyWave->setLockedBorder(waveBorderWidth);
 
     // initial perturbation
     int xCenter = dxControlMatZs.cols / 2;
@@ -622,16 +729,14 @@ void showImageTransformBSpline()
     int deviceId = 0;
     int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
 
-    cv::Mat dxs = imageTransform.getDxGrid().getControlPointZs();
-    cv::Mat dys = imageTransform.getDyGrid().getControlPointZs();
-    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxs);
-    CudaMat2<float> cudaDys = CreateCudaMat<float>(dys);
+    CudaMat2<float> cudaDxs = CreateCudaMat<float>(dxControlMatZs);
+    CudaMat2<float> cudaDys = CreateCudaMat<float>(dyControlMatZs);
 
     cv::Mat imgBgra;
     cv::cvtColor(img, imgBgra, cv::COLOR_BGR2BGRA);
 
-    int bSplineGridRows = imageTransform.getDxGrid().rows();
-    int bSplineGridCols = imageTransform.getDxGrid().cols();
+    int bSplineGridRows = pImageTransform->getDxGrid().rows();
+    int bSplineGridCols = pImageTransform->getDxGrid().cols();
     float dxScale = (float)imgBgra.cols / bSplineGridCols; // pixels per cell
     float dyScale = (float)imgBgra.rows / bSplineGridRows; // pixels per cell
 
@@ -655,16 +760,15 @@ void showImageTransformBSpline()
 
     while(true)
     {
-        // Not doing wave right now
-        if (doWaves)
-        {
-            dxWave.apply(dxControlMatZs);
-            dyWave.apply(dyControlMatZs);
-        }
+        //if (doWaves)
+        //{
+            dxWave->apply(dxControlMatZs);
+            dyWave->apply(dyControlMatZs);
+        //}
 
         if (doCpu)
         {
-            imageTransform.transformImage(img, interp, dst);
+            pImageTransform->transformImage(img, interp, dst, false);
         }
         else
         {
@@ -809,7 +913,7 @@ void tryCudaTransformImageGray()
     imageTransform.setRandomDistortion(-5, 5);
 
     // CPU
-    imageTransform.transformImage(img, interp, dst);
+    imageTransform.transformImage(img, interp, dst, false);
     cv::Mat cpuGray;
     cv::cvtColor(dst, cpuGray, cv::COLOR_RGB2GRAY);
     saveDebugImage(cpuGray, "cpuGray");
@@ -860,7 +964,7 @@ void tryCudaTransformImageBgra()
     imageTransform.setRandomDistortion(-5, 5);
 
     // CPU
-    imageTransform.transformImage(img, interp, dst);
+    imageTransform.transformImage(img, interp, dst, false);
     saveDebugImage(dst, "cpu");
 
     // CUDA
@@ -964,7 +1068,7 @@ void runImageTransformCpu(int nCycles, cv::InterpolationFlags interp, ImageTrans
 
     for (int i = 0; i < nCycles; i++)
     {
-        imageTransform.transformImage(img, interp, dst);
+        imageTransform.transformImage(img, interp, dst, false);
     }
 }
 
@@ -1080,6 +1184,124 @@ void benchThroughputTransformImageBgra()
     }
 }
 
+void tryGaussianDomeCurve()
+{
+    int n = 100;
+    vector<cv::Point2f> points;
+
+    for (int i = 0; i < n; i++)
+    {
+        float x = i;
+        float y = 0.0f;
+        points.push_back(cv::Point2f(x, y));
+    }
+
+    // Add a gaussian
+    float halfWidth = 10.0f;
+    float height = 5.0f;
+    float xCenter = 30.0f;
+
+    for (int i = 0; i < n; i++)
+    {
+        float x = i;
+
+        points[i].y += gaussianScaledf(halfWidth, height, xCenter, x);
+    }
+
+    cv::Mat plotImg = plotPointsAndCurve("Bezier Points", points, points);
+    saveDebugImage(plotImg, "bezier-points");
+}
+
+void tryGaussianDomeDeform()
+{
+    bool doDebug = true;
+    cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath);
+    saveDebugImage(img, "orig");
+
+    int pxPerCell = 32;
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+
+    // apply an offset
+    float halfWidth = 20.0f;
+    cv::Point2f deformCenter(img.cols / 2, img.rows / 2);
+    cv::Point2f offset(100.0f, 0.0f);
+
+    applyGaussianDomeDeformation(imageTransform, halfWidth, deformCenter, offset, doDebug);
+
+    cv::Mat dst;
+    imageTransform.transformImage(img, interp, dst, doDebug);
+    saveDebugImage(dst, "transformed");
+}
+
+void applySpringMeshDeformation(cv::Mat& img, ImageTransformBSpline& imageTransform, cv::Point2f deformCenter,
+    cv::Point2f offsetVector, bool doDebug)
+{
+    float pxPerCell = imageTransform.getPxPerCell();
+    cv::Mat dxControlMatZs = imageTransform.getDxGrid().getControlPointZs();
+    cv::Mat dyControlMatZs = imageTransform.getDyGrid().getControlPointZs();
+
+    // Apply the offset
+    int xCenter = lroundf(deformCenter.x / pxPerCell) + 1;
+    int yCenter = lroundf(deformCenter.y / pxPerCell) + 1;
+    dxControlMatZs.at<float>(yCenter, xCenter) = offsetVector.x;
+    dyControlMatZs.at<float>(yCenter, xCenter) = offsetVector.y;
+
+    // Spring mesh
+    float k = 0.1f; // spring constant
+    float m = 1.0f; // mass
+    float friction = 1.0f - 0.015f;
+
+    MatWave dxWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
+    MatWave dyWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
+    dxWave.setLockedBorder(true);
+    dyWave.setLockedBorder(true);
+    cv::Point2i lockedPoint(xCenter, yCenter);
+    vector<cv::Point2i> lockedPoints;
+    lockedPoints.push_back(lockedPoint);
+    dxWave.setLockedPoints(lockedPoints);
+
+    for (int i = 0; i < 150; i++)
+    {
+        //saveDebugImage(dxControlMatZs, "dxWave");
+        dxWave.apply(dxControlMatZs);
+        dyWave.apply(dyControlMatZs);
+
+        if (doDebug) // && (i % 10 == 0))
+        {
+            cv::Mat dst;
+            imageTransform.transformImage(img, cv::INTER_CUBIC, dst, false);
+            saveDebugImage(dst, "transformed");
+        }
+    }
+}
+
+void trySpringMeshDeform()
+{
+    bool doDebug = true;
+    cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
+
+    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+    cv::Mat img = loadAndConvertTestImage(imgPath);
+    saveDebugImage(img, "orig");
+
+    int pxPerCell = 32;
+    ImageTransformBSpline imageTransform(img, pxPerCell);
+
+    // apply an offset
+    cv::Point2f deformCenter(img.cols / 2, img.rows / 2);
+    cv::Point2f offset(100.0f, 0.0f);
+
+    applySpringMeshDeformation(img, imageTransform, deformCenter, offset, doDebug);
+
+    cv::Mat dst;
+    imageTransform.transformImage(img, interp, dst, doDebug);
+    saveDebugImage(dst, "transformed");
+}
+
+
 int main()
 {
     fmt::print("Starting...\n");
@@ -1095,8 +1317,10 @@ int main()
     return 0;
 #endif
 
+    showImageTransformBSpline();
+
     //tryCvPlot();
-    tryBezierCurve();
+    //tryBezierCurve();
     //tryBSplineCurve();
     //tryGnuPlot();
     //tryBezierSurface();
@@ -1109,13 +1333,16 @@ int main()
     //tryBSplineGrid();
     //tryMatWave();
     //tryBSplineGridDeformImage();
-    //showImageTransformBSpline();
     //tryMatStrides();
     //tryAllComputeBezierControlPoints();
     //tryCudaEvalBSpline();
     //tryCudaTransformImageGray();
     //tryCudaTransformImageBgra();
-    tryBezierCurveFit();
+    //tryBezierCurveFit();
+    //tryBSplineCurveFit();
+    //tryGaussianDomeCurve();
+    //tryGaussianDomeDeform();
+    //trySpringMeshDeform();
 
     fmt::print("Done.\n");
     return 0;

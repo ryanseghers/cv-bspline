@@ -11,9 +11,10 @@ namespace CvImageDeform
         : dxGrid(image.rows / pxPerCell, image.cols / pxPerCell),
         dyGrid(image.rows / pxPerCell, image.cols / pxPerCell)
     {
+        this->pxPerCell = pxPerCell;
     }
 
-    void ImageTransformBSpline::transformImage(const cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage)
+    void ImageTransformBSpline::transformImage(const cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage, bool doDebug)
     {
         int rowRes = inputImage.rows / dxGrid.rows();
         int colRes = inputImage.cols / dxGrid.cols();
@@ -41,6 +42,12 @@ namespace CvImageDeform
         std::vector<cv::Mat> dyChannels(3);
         cv::split(dyEvalMat, dyChannels);
         cv::Mat dyEvalMatZs = dyChannels[2];
+
+        if (doDebug)
+        {
+            saveDebugImage(dxEvalMatZs, "dx-grid-eval");
+            saveDebugImage(dyEvalMatZs, "dy-grid-eval");
+        }
 
         cv::Mat xmap = xcoords + dxEvalMatZs;
         cv::Mat ymap = ycoords + dyEvalMatZs;
