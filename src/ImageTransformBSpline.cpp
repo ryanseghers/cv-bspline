@@ -14,7 +14,7 @@ namespace CvImageDeform
         this->pxPerCell = pxPerCell;
     }
 
-    void ImageTransformBSpline::transformImage(const cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage, bool doDebug)
+    void ImageTransformBSpline::transformImage(cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage, bool doDebug)
     {
         int rowRes = inputImage.rows / dxGrid.rows();
         int colRes = inputImage.cols / dxGrid.cols();
@@ -43,17 +43,21 @@ namespace CvImageDeform
         cv::split(dyEvalMat, dyChannels);
         cv::Mat dyEvalMatZs = dyChannels[2];
 
+        cv::Mat xmap = xcoords - dxEvalMatZs;
+        cv::Mat ymap = ycoords - dyEvalMatZs;
+
+        cv::Mat dest;
+        cv::remap(inputImage, outputImage, xmap, ymap, interp, cv::BORDER_CONSTANT);
+
         if (doDebug)
         {
             saveDebugImage(dxEvalMatZs, "dx-grid-eval");
             saveDebugImage(dyEvalMatZs, "dy-grid-eval");
+            saveDebugImage(xmap, "xmap");
+            saveDebugImage(ymap, "ymap");
+            saveDebugImage(inputImage, "inputImage");
+            saveDebugImage(outputImage, "outputImage");
         }
-
-        cv::Mat xmap = xcoords + dxEvalMatZs;
-        cv::Mat ymap = ycoords + dyEvalMatZs;
-
-        cv::Mat dest;
-        cv::remap(inputImage, outputImage, xmap, ymap, interp, cv::BORDER_CONSTANT);
     }
 
     void ImageTransformBSpline::setRandomDistortion(float min, float max)

@@ -16,21 +16,24 @@ namespace CvImageDeform
         this->friction = friction;
         velocity = cv::Mat::zeros(rows, cols, CV_32F);
         mask = cv::Mat::ones(rows, cols, CV_32F);
+        borderLockMask = cv::Mat::ones(rows, cols, CV_32F);
+        storedLockedPointMask = cv::Mat::ones(rows, cols, CV_32F);
     }
 
     void MatWave::setLockedBorder(int borderWidth)
     {
         lockedBorderWidth = borderWidth;
+
+        borderLockMask = mask.clone();
+
+        // set border to 0 (by setting all to 0 and then center to 1)
+        borderLockMask = 0.0f;
         cv::Rect roi(lockedBorderWidth, lockedBorderWidth, mask.cols - lockedBorderWidth * 2, mask.rows - lockedBorderWidth * 2);
-        mask = 0.0f;
-        mask(roi) = 1.0f;
+        borderLockMask(roi) = 1.0f;
     }
 
     void MatWave::setLockedPoints(const std::vector<cv::Point2i>& points)
     {
-        cv::Rect roi(lockedBorderWidth, lockedBorderWidth, mask.cols - lockedBorderWidth * 2, mask.rows - lockedBorderWidth * 2);
-        mask(roi) = 1.0f;
-
         for (int i = 0; i < points.size(); i++)
         {
             mask.at<float>(points[i].y, points[i].x) = 0.0f;
@@ -39,22 +42,40 @@ namespace CvImageDeform
 
     void MatWave::setLockedPoint(int x, int y)
     {
-        // Clear last locked point
-        if (lastLockedPoint.x > 0)
-        {
-            mask.at<float>(lastLockedPoint.y, lastLockedPoint.x) = 1.0f;
-        }
-
         mask.at<float>(y, x) = 0.0f;
+    }
 
-        lastLockedPoint.x = x;
-        lastLockedPoint.y = y;
+    void MatWave::storeLockedPoints()
+    {
+        cv::min(storedLockedPointMask, mask, storedLockedPointMask);
+    }
+
+    void MatWave::clearLockedPoints()
+    {
+        // if we have a locked border have to re-apply else we lose that
+        mask = 1.0f;
+    }
+
+    void MatWave::clearStoredLockedPoints()
+    {
+        // if we have a locked border have to re-apply else we lose that
+        storedLockedPointMask = 1.0f;
+    }
+
+    void MatWave::saveDebugImages(const char* name)
+    {
+        saveDebugImage(mask, name);
+        saveDebugImage(force, "force");
+        saveDebugImage(acceleration, "acceleration");
+        saveDebugImage(velocity, "velocity");
+        saveDebugImage(mask, "lockedPointsMask");
+        saveDebugImage(storedLockedPointMask, "storedLockedPointMask");
     }
 
     void MatWave::apply(cv::Mat& mat)
     {
         // Force is the sum of the f=k*x of the 4 neighbors of each point.
-        cv::Mat force = cv::Mat::zeros(mat.rows, mat.cols, CV_32F);
+        force = cv::Mat::zeros(mat.rows, mat.cols, CV_32F);
 
         for (int r = 0; r < mat.rows; r++)
         {
@@ -88,7 +109,7 @@ namespace CvImageDeform
         }
 
         // Acceleration is the force over mass.
-        cv::Mat acceleration = force / mass;
+        acceleration = force / mass;
 
         // Apply the acceleration to the velocity.
         float dt = 1.0f;
@@ -98,6 +119,8 @@ namespace CvImageDeform
         //saveDebugImage(velocity, "velocity");
         //saveDebugImage(mask, "mask");
         cv::multiply(velocity, mask, velocity);
+        cv::multiply(velocity, borderLockMask, velocity);
+        cv::multiply(velocity, storedLockedPointMask, velocity);
 
         // Apply the velocity to the position.
         mat += velocity * dt;

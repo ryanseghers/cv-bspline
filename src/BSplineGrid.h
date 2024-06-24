@@ -61,5 +61,19 @@ namespace CvImageDeform
         {
             return cv::Point2i(col + 1, row + 1);
         }
+
+        /**
+        * @brief Get Z value at the specified point.
+        * The point is in surface roi coordinates (not the full size of _controlPointZs).
+        */
+        float getZValue(cv::Point2i pt);
+        float getZValue(int x, int y);
+
+        /**
+        * @brief Render a debug image showing the field.
+        * Values are shown as horizontal vectors despite actually having no inherent meaning and certainly not
+        * always representing horizontal vectors.
+        */
+        cv::Mat renderField(int nPointsDim);
     };
 }

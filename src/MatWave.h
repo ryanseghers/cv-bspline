@@ -7,6 +7,8 @@ namespace CvImageDeform
 {
     /**
      * @brief A grid where each point has springs to its 4 neighbors.
+     * This just keeps track of velocity, updates with each call to apply,
+     * and add that velocity 
      */
     class MatWave
     {
@@ -15,6 +17,9 @@ namespace CvImageDeform
         float mass;
         float friction; // 1.0 is no friction
         cv::Mat velocity;
+        cv::Mat force;
+        cv::Mat acceleration;
+        cv::Mat borderLockMask;
 
         int lockedBorderWidth = 0;
 
@@ -23,11 +28,7 @@ namespace CvImageDeform
          * velocity at each round, before applying the velocity.
          */
         cv::Mat mask;
-
-        /**
-         * @brief Last locked point so we can clear it.
-         */
-        cv::Point2i lastLockedPoint;
+        cv::Mat storedLockedPointMask;
 
         MatWave() = delete;
 
@@ -40,18 +41,25 @@ namespace CvImageDeform
         MatWave(float kSpring, float mass, float friction, int rows, int cols);
 
         /**
-         * @brief This doesn't clear borders from previous calls so you cannot reduce the border
-         * width.
+         * @brief This clears all previous locked points.
          */
-        void setLockedBorder(int /*borderWidth*/);
+        void setLockedBorder(int borderWidth);
 
         void setLockedPoints(const std::vector<cv::Point2i>& points);
         void setLockedPoint(int x, int y);
+        void clearLockedPoints();
 
+        /**
+        * @brief Store current locked points and keep applying them until clear.
+        */
+        void storeLockedPoints();
+        void clearStoredLockedPoints();
 
         /**
          * @brief In-place apply one tick's worth of wave propagation.
         */
         void apply(cv::Mat& mat);
+
+        void saveDebugImages(const char* name);
     };
 }

@@ -32,7 +32,7 @@ namespace CvImageDeform
         BSplineGrid& getDyGrid() { return dyGrid; }
         float getPxPerCell() { return pxPerCell; }
 
-        void transformImage(const cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage, bool doDebug);
+        void transformImage(cv::Mat& inputImage, cv::InterpolationFlags interp, cv::Mat& outputImage, bool doDebug);
 
         void setRandomDistortion(float min, float max);
     };

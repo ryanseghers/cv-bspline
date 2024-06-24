@@ -25,11 +25,17 @@
 #include "cudaBSplineEval.h"
 #include "cudaBSplineTransform.h"
 
-
 using namespace std;
 using namespace std::chrono;
 using namespace CppOpenCVUtil;
 using namespace CvImageDeform;
+
+const std::string TestImagePath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+
+// don't want to depend on windows just for this
+const int screenWidth = 2560;
+const int screenHeight = 1440;
+
 
 void tryBezierCurve()
 {
@@ -42,24 +48,6 @@ void tryBezierCurve()
     vector<cv::Point2f> evalPoints;
     evalBezierCurveCubic(points, 100, evalPoints);
     cv::Mat plotImg = plotPointsAndCurve("Bezier Points", points, evalPoints);
-    saveDebugImage(plotImg, "bezier-points");
-}
-
-void tryBezierCurveFit()
-{
-    // Going through three points
-    cv::Point2f p0(0, 0);
-    //cv::Point2f p1(1, 2);
-    //cv::Point2f p2(2, 2);
-    cv::Point2f p3(3, 1);
-    cv::Point2f pmid(1.5f, 1.6f);
-    vector<cv::Point2f> points = { p0, pmid, p3 };
-
-    vector<cv::Point2f> fittedPoints = fitBezierCurveCubic(points);
-
-    vector<cv::Point2f> evalPoints;
-    evalBezierCurveCubic(fittedPoints, 100, evalPoints);
-    cv::Mat plotImg = plotPointsAndCurve("Bezier Points", fittedPoints, evalPoints);
     saveDebugImage(plotImg, "bezier-points");
 }
 
@@ -105,19 +93,58 @@ float gaussianScaledf(float halfWidth, float height, float center, float x)
     return g;
 }
 
+void tryBezierCurveFit()
+{
+    // Fit curve via three points
+    cv::Point2f p0(0, 0);
+    cv::Point2f p1(1.5f, 1.6f);
+    cv::Point2f p2(3, 1);
+    vector<cv::Point2f> points = { p0, p1, p2 };
+
+    vector<cv::Point2f> fittedPoints = fitBezierCurveCubic(points);
+
+    vector<cv::Point2f> evalPoints;
+    evalBezierCurveCubic(fittedPoints, 100, evalPoints);
+    cv::Mat plotImg = plotPointsAndCurve("Bezier Points", fittedPoints, evalPoints);
+    saveDebugImage(plotImg, "bezier-points");
+}
+
+// actual fitting is relatively difficult for arbitrary points and can tie the b-spline in knots.
+// just using values as b-spline control points under-fits but works quite nicely (at least for uniformly spaced points)
 void tryBSplineCurveFit()
 {
     vector<cv::Point2f> inputPoints;
+
+    // define input points via gaussian function
     float xSpacing = 1.0f;
-    int n = 10;
+    int n = 50;
     float xCenter = ((n - 1) * xSpacing) / 2;
 
-    for (float x = 0.0f; x < n; x += xSpacing)
-    {
-        float dx = x - xCenter;
-        float y = gaussianf(2 * dx / n);
-        inputPoints.push_back(cv::Point2f(x, y));
-    }
+    //for (float x = 0.0f; x < n; x += xSpacing)
+    //{
+    //    float dx = x - xCenter;
+    //    float y = gaussianf(2 * dx / n);
+    //    inputPoints.push_back(cv::Point2f(x, y));
+    //}
+
+    // define input points via sin function
+    //for (float x = 0.0f; x < n; x += xSpacing)
+    //{
+    //    float y = sinf(x / 20 * 3.14f * 2.0f);
+    //    inputPoints.push_back(cv::Point2f(x, y));
+    //}
+
+    // some canned points
+    float x = 0.0f;
+    inputPoints.push_back(cv::Point2f(x++, 1.0f));
+    inputPoints.push_back(cv::Point2f(x++, 3.0f));
+    inputPoints.push_back(cv::Point2f(x++, 1.0f));
+    inputPoints.push_back(cv::Point2f(x++, 1.0f));
+    inputPoints.push_back(cv::Point2f(x++, 6.0f));
+    inputPoints.push_back(cv::Point2f(x++, -1.0f));
+    inputPoints.push_back(cv::Point2f(x++, 1.0f));
+    inputPoints.push_back(cv::Point2f(x++, 2.0f));
+    inputPoints.push_back(cv::Point2f(x++, 1.0f));
 
     // eval the inputs directly as b-spline control points
     auto evalPoints = evalBSplineCurveCubic(inputPoints, 100);
@@ -368,6 +395,55 @@ cv::Mat createMatWithRowIndices(int rows, int cols)
     return mat;
 }
 
+cv::Mat ensureImageDims(cv::Mat img, int sizeMult)
+{
+    if ((img.rows % sizeMult) || (img.cols % sizeMult))
+    {
+        cv::Mat tmp;
+        int newRows = (img.rows / sizeMult) * sizeMult;
+        int newCols = (img.cols / sizeMult) * sizeMult;
+        cv::resize(img, tmp, cv::Size(newCols, newRows));
+        img = tmp;
+    }
+
+    return img;
+}
+
+cv::Mat buildTestGridImage(int sizeMult)
+{
+    cv::Mat img = cv::Mat::zeros(screenHeight, screenWidth, CV_8UC4);
+    img = ensureImageDims(img, sizeMult);
+
+    int gridSpacing = sizeMult;
+
+    cv::Scalar white(255, 255, 255);
+    cv::Scalar blue(255, 0, 0);
+    cv::Scalar black(0, 0, 0);
+
+    img = white;
+    cv::Scalar gridColor = black;
+
+    // vert lines
+    for (int x = 0; x < img.cols; x += gridSpacing)
+    {
+        cv::Point2i pt1(x, 0);
+        cv::Point2i pt2(x, img.rows);
+
+        cv::line(img, pt1, pt2, gridColor);
+    }
+
+    // horz lines
+    for (int y = 0; y < img.rows; y += gridSpacing)
+    {
+        cv::Point2i pt1(0, y);
+        cv::Point2i pt2(img.cols, y);
+
+        cv::line(img, pt1, pt2, gridColor);
+    }
+
+    return img;
+}
+
 cv::Mat loadAndConvertTestImage(const string& imgPath, bool doConvertTo8u = true, int sizeMult = 64)
 {
     cv::Mat img = cv::imread(imgPath, cv::IMREAD_UNCHANGED);
@@ -382,22 +458,16 @@ cv::Mat loadAndConvertTestImage(const string& imgPath, bool doConvertTo8u = true
     }
 
     // Downsize for perf
-    if (img.rows > 1024)
+    if (img.rows > screenHeight)
     {
-        int newRows = 1024;
-        int newCols = 1024 * img.cols / img.rows;
+        int newRows = screenHeight;
+        int newCols = screenWidth * img.cols / img.rows;
         cv::resize(img, img, cv::Size(newCols, newRows));
         //saveDebugImage(img, "scaled");
     }
 
     // Make image size a multiple of sizeMult for simplicity
-    if ((img.rows % sizeMult) || (img.cols % sizeMult))
-    {
-        int newRows = (img.rows / sizeMult) * sizeMult;
-        int newCols = (img.cols / sizeMult) * sizeMult;
-        cv::resize(img, tmp, cv::Size(newCols, newRows));
-        img = tmp;
-    }
+    img = ensureImageDims(img, sizeMult);
 
     return img;
 }
@@ -588,10 +658,18 @@ void applyGaussianDomeDeformation(ImageTransformBSpline& imageTransform, float h
 }
 
 const int waveBorderWidth = 2; // in cells
-int pxPerCell = 16;
+int pxPerCell = 64;
 ImageTransformBSpline* pImageTransform = nullptr;
 MatWave* dxWave = nullptr;
 MatWave* dyWave = nullptr;
+
+cv::Mat dxControlMatZsBase;
+cv::Mat dyControlMatZsBase;
+// As the mouse drags these are modified, then applied to the originals and zero'd when dragging is done
+cv::Mat dxControlMatZsOffsets;
+cv::Mat dyControlMatZsOffsets;
+
+
 
 //cv::Mat dxControlMatZs;
 //cv::Mat dyControlMatZs;
@@ -622,8 +700,9 @@ void mouseCallbackWave(int event, int x, int y, int flags, void* userdata)
 
 /**
  * @brief Adjust control points based on mouse drag.
+ * This is in the sense of a forward/push image remap, from mouse start to end.
  */
-void fitMouseDrag()
+void fitMouseDragForward()
 {
     // +1 because control points go outside of surface
     int xi = lroundf(mouseStartPoint.x / pxPerCell) + 1;
@@ -650,6 +729,61 @@ void fitMouseDrag()
     }
 }
 
+/**
+ * @brief Adjust control points based on mouse drag.
+ * This is in the sense of a pull image remap, from mouse end to start.
+ */
+void fitMouseDrag()
+{
+    // +1 because control points go outside of surface
+    int xsi = int(mouseStartPoint.x / pxPerCell) + 1;
+    int ysi = int(mouseStartPoint.y / pxPerCell) + 1;
+    int xi = int(mouseEndPoint.x / pxPerCell) + 1;
+    int yi = int(mouseEndPoint.y / pxPerCell) + 1;
+
+    cv::Point2f offset = mouseEndPoint - mouseStartPoint;
+
+    // Update the locked points in the wave/spring grid sim
+    dxWave->clearLockedPoints();
+    dyWave->clearLockedPoints();
+    vector<cv::Point2i> lockedPoints;
+    lockedPoints.push_back(cv::Point2i(xi, yi));
+    lockedPoints.push_back(cv::Point2i(xi + 1, yi));
+    lockedPoints.push_back(cv::Point2i(xi, yi + 1));
+    lockedPoints.push_back(cv::Point2i(xi + 1, yi + 1));
+    dxWave->setLockedPoints(lockedPoints);
+    dyWave->setLockedPoints(lockedPoints);
+
+    // Apply this offset
+    cv::Mat dxControlMatZs = pImageTransform->getDxGrid().getControlPointZs();
+    cv::Mat dyControlMatZs = pImageTransform->getDyGrid().getControlPointZs();
+
+    for (int i = 0; i < lockedPoints.size(); i++)
+    {
+        dxControlMatZs.at<float>(lockedPoints[i].y, lockedPoints[i].x) = offset.x;
+        dyControlMatZs.at<float>(lockedPoints[i].y, lockedPoints[i].x) = offset.y;
+    }
+
+    //// represent the offset
+    //dxControlMatZsOffsets = 0.0f;
+    //dyControlMatZsOffsets = 0.0f;
+
+    //for (int i = 0; i < lockedPoints.size(); i++)
+    //{
+    //    dxControlMatZsOffsets.at<float>(lockedPoints[i].y, lockedPoints[i].x) = offset.x;
+    //    dyControlMatZsOffsets.at<float>(lockedPoints[i].y, lockedPoints[i].x) = offset.y;
+    //}
+
+    //// apply this offset to transform
+    //cv::Mat newDx = dxControlMatZsBase + dxControlMatZsOffsets;
+    //cv::Mat newDy = dyControlMatZsBase + dyControlMatZsOffsets;
+    //newDx.copyTo(dxControlMatZs);
+    //newDy.copyTo(dyControlMatZs);
+
+    //dxControlMatZs = dxControlMatZsBase + dxControlMatZsOffsets;
+    //dyControlMatZs = dyControlMatZsBase + dyControlMatZsOffsets;
+}
+
 void mouseCallbackFitting(int event, int x, int y, int flags, void* userdata)
 {
     if (event == cv::EVENT_LBUTTONDOWN)
@@ -658,6 +792,19 @@ void mouseCallbackFitting(int event, int x, int y, int flags, void* userdata)
         mouseStartPoint.x = x;
         mouseStartPoint.y = y;
         isMouseDown = true;
+
+        dxWave->storeLockedPoints();
+        dyWave->storeLockedPoints();
+
+        //// Take a clone of the current transform as our base for this drag.
+        //cv::Mat dxControlMatZs = pImageTransform->getDxGrid().getControlPointZs();
+        //cv::Mat dyControlMatZs = pImageTransform->getDyGrid().getControlPointZs();
+        //dxControlMatZsBase = dxControlMatZs.clone();
+        //dyControlMatZsBase = dyControlMatZs.clone();
+
+        //// Setup and clear the offsets mats
+        //dxControlMatZsOffsets = cv::Mat::zeros(dxControlMatZs.rows, dxControlMatZs.cols, dxControlMatZs.type());
+        //dyControlMatZsOffsets = cv::Mat::zeros(dyControlMatZs.rows, dyControlMatZs.cols, dyControlMatZs.type());
     }
     else if (isMouseDown && (event == cv::EVENT_MOUSEMOVE))
     {
@@ -673,6 +820,19 @@ void mouseCallbackFitting(int event, int x, int y, int flags, void* userdata)
         fmt::println("Left button up at: {0}, {1}", x, y);
         isMouseDown = false;
         //fitMouseDrag();
+
+        //cv::Point2f offset = mouseEndPoint - mouseStartPoint;
+        //fmt::println("Drag from: ({0:.1f}, {1:.1f}) to ({2:.1f}, {3:.1f})", mouseStartPoint.x, mouseStartPoint.y, mouseEndPoint.x, mouseEndPoint.y);
+        //fmt::println("Drag distance: {0:.1f}", sqrtf(offset.x * offset.x + offset.y * offset.y));
+
+        //// Update the main transform matrices
+        //cv::Mat dxControlMatZs = pImageTransform->getDxGrid().getControlPointZs();
+        //cv::Mat dyControlMatZs = pImageTransform->getDyGrid().getControlPointZs();
+        ////dxControlMatZs = dxControlMatZsBase;
+        ////dyControlMatZs = dyControlMatZsBase;
+        ////dxControlMatZsBase.copyTo(dxControlMatZs);
+        //dxControlMatZs.copyTo(dxControlMatZsBase);
+        //dyControlMatZs.copyTo(dyControlMatZsBase);
     }
 }
 
@@ -697,12 +857,16 @@ CudaMat2<T> CreateCudaMat(cv::Mat mat)
 void showImageTransformBSpline()
 {
     bool doCpu = false;
-    bool doWaves = false;
+    bool doMouseClickWaves = false;
+    bool doWaves = true;
+    bool doShowDebugImage = false;
 
     cv::InterpolationFlags interp = cv::INTER_CUBIC; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
 
-    string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
-    cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
+    cv::Mat img = loadAndConvertTestImage(TestImagePath, false, pxPerCell);
+    //cv::Mat img = buildTestGridImage(pxPerCell);
+    //saveDebugImage(img, "orig");
+    //return;
 
     pImageTransform = new ImageTransformBSpline(img, pxPerCell);
     cv::Mat dst;
@@ -713,7 +877,7 @@ void showImageTransformBSpline()
 
     float k = 0.1f; // spring constant
     float m = 1.0f; // mass
-    float friction = 1.0f - 0.015f;
+    float friction = 1.0f - 0.1f;
 
     dxWave = new MatWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
     dyWave = new MatWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
@@ -749,7 +913,7 @@ void showImageTransformBSpline()
     cv::namedWindow("Image", cv::WINDOW_NORMAL);
     cv::setWindowProperty("Image", cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
 
-    if (doWaves)
+    if (doMouseClickWaves)
     {
         cv::setMouseCallback("Image", mouseCallbackWave);
     }
@@ -760,13 +924,20 @@ void showImageTransformBSpline()
 
     while(true)
     {
-        //if (doWaves)
-        //{
+        if (doWaves)
+        {
             dxWave->apply(dxControlMatZs);
             dyWave->apply(dyControlMatZs);
-        //}
+        }
 
-        if (doCpu)
+        if (doShowDebugImage)
+        {
+            //cv::Mat evalImg = pImageTransform->getDxGrid().evalSurface(pxPerCell);
+            cv::Mat fieldImg = pImageTransform->getDxGrid().renderField(pxPerCell);
+            //cv::cvtColor(dstCudaBgra, dst, cv::COLOR_BGRA2BGR);
+            dst = fieldImg;
+        }
+        else if (doCpu)
         {
             pImageTransform->transformImage(img, interp, dst, false);
         }
@@ -777,7 +948,8 @@ void showImageTransformBSpline()
         }
 
         cv::imshow("Image", dst);
-        int key = cv::waitKey(10);
+
+        int key = cv::waitKey(1);
 
         if (key >= 0)
         {
@@ -786,6 +958,41 @@ void showImageTransformBSpline()
                 break;
             }
             fmt::print("Key: {0}", key);
+
+            if (key == 'd')
+            {
+                // use the cpu transform to save debug images
+                pImageTransform->transformImage(img, interp, dst, true);
+                cv::Mat evalImg = pImageTransform->getDxGrid().evalSurface(pxPerCell);
+                saveDebugImage(evalImg, "eval");
+                saveDebugImage(dxControlMatZs, "dxControlMatZs");
+
+                dxWave->saveDebugImages("dxWave");
+
+                //cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
+                //cv::cvtColor(dstCudaBgra, dst, cv::COLOR_BGRA2BGR);
+                //saveDebugImage(dst, "deformed");
+
+                //cv::Mat dxSurface = pImageTransform->getDxGrid().evalSurface(pxPerCell);
+                //std::vector<cv::Mat> channels;
+                //cv::split(dxSurface, channels);
+                //cv::Mat dxSurfaceZs = channels[2];
+
+                //fmt::println("dxSurfaceZs: {0}", ImageUtil::getImageDescString(dxSurfaceZs));
+                //saveDebugImage(dxSurfaceZs, "dxSurfaceZs");
+
+                //fmt::println("dxControlMatZs: {0}", ImageUtil::getImageDescString(dxControlMatZs));
+                //saveDebugImage(dxControlMatZs, "dxControlMatZs");
+            }
+            else if (key == 'c')
+            {
+                // clear distortions
+                dxWave->clearLockedPoints();
+                dxWave->clearStoredLockedPoints();
+
+                dyWave->clearLockedPoints();
+                dyWave->clearStoredLockedPoints();
+            }
         }
     }
 
@@ -998,8 +1205,7 @@ void benchTransformImageBgra()
     cv::InterpolationFlags interp = cv::INTER_NEAREST; // cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC
     int samplingType = (int)interp; // 0 NN, 1 bilinear, 2 bicubic
 
-    //string imgPath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
-    string imgPath = "C:/Temp/PXL_20230914_161024366.jpg";
+    string imgPath = TestImagePath; // "C:/Temp/PXL_20230914_161024366.jpg";
     cv::Mat img = loadAndConvertTestImage(imgPath, false, pxPerCell);
     //saveDebugImage(img, "orig");
 
@@ -1015,18 +1221,18 @@ void benchTransformImageBgra()
 #if _DEBUG
     nCycles = 1;
 #else
-    nCycles = 1;
+    nCycles = 10;
 #endif
 
-    //auto startTime = CppBaseUtil::getTimeNow();
+    auto startTime = CppBaseUtil::getTimeNow();
 
-    //for (int i = 0; i < nCycles; i++)
-    //{
-    //    imageTransform.transformImage(img, interp, dst);
-    //}
+    for (int i = 0; i < nCycles; i++)
+    {
+        imageTransform.transformImage(img, interp, dst, false);
+    }
 
-    //fmt::println("CPU: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
-    //saveDebugImage(dst, "cpu");
+    fmt::println("CPU: {0:.1f} ms", CppBaseUtil::getDurationSeconds(startTime) * 1000.0f / nCycles);
+    saveDebugImage(dst, "cpu");
 
     // CUDA
     int deviceId = 0;
@@ -1048,6 +1254,9 @@ void benchTransformImageBgra()
     CudaMat2<BgraQuad> srcCudaBgra = CreateCudaMat<BgraQuad>(imgBgra);
     cv::Mat dstCudaBgra = cv::Mat::zeros(dst.rows, dst.cols, CV_8UC4);
     CudaMat2<BgraQuad> dstCudaBgra2 = CreateCudaMat<BgraQuad>(dstCudaBgra);
+
+    // warmup
+    cudaBSplineTransformImage(deviceId, srcCudaBgra, cudaDxs, dxScale, cudaDys, dyScale, samplingType, dstCudaBgra2);
 
     auto startTimeCuda = CppBaseUtil::getTimeNow();
 
@@ -1311,13 +1520,11 @@ int main()
 #ifndef _DEBUG
     //benchmarkBSplineSurface();
     //tryBSplineGridDeformImage();
-    showImageTransformBSpline();
     //benchTransformImageBgra();
     //benchThroughputTransformImageBgra();
+    showImageTransformBSpline();
     return 0;
 #endif
-
-    showImageTransformBSpline();
 
     //tryCvPlot();
     //tryBezierCurve();
@@ -1338,11 +1545,14 @@ int main()
     //tryCudaEvalBSpline();
     //tryCudaTransformImageGray();
     //tryCudaTransformImageBgra();
-    //tryBezierCurveFit();
-    //tryBSplineCurveFit();
     //tryGaussianDomeCurve();
     //tryGaussianDomeDeform();
     //trySpringMeshDeform();
+
+    //tryBezierCurveFit();
+    //tryBSplineCurveFit();
+
+    showImageTransformBSpline();
 
     fmt::print("Done.\n");
     return 0;

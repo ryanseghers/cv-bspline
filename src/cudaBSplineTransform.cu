@@ -209,8 +209,8 @@ __global__ void transformKernelBgra(CudaMat2<BgraQuad> outputImage, int sampling
     CudaPoint3<float> dyPt = evalBezierSurfaceCubicPointSub(dyBezierControlPointZs, cellx, celly);
 
     // The bezier values are offsets in pixels for where to sample from the source image.
-    float x = xi + dxPt.z;
-    float y = yi + dyPt.z;
+    float x = xi - dxPt.z;
+    float y = yi - dyPt.z;
 
     // sample from the computed location
     if (samplingType == 0)
