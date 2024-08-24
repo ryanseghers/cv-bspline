@@ -879,6 +879,13 @@ void showImageTransformBSpline()
     float m = 1.0f; // mass
     float friction = 1.0f - 0.1f;
 
+    if (doMouseClickWaves)
+    {
+        k = 0.01f;
+        //m = 0.0f;
+        friction = 1.0f - 0.005f;
+    }
+
     dxWave = new MatWave(k, m, friction, dxControlMatZs.rows, dxControlMatZs.cols);
     dyWave = new MatWave(k, m, friction, dyControlMatZs.rows, dyControlMatZs.cols);
 

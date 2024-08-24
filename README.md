@@ -4,6 +4,9 @@ C++ OpenCV Bezier and B-Spline Library
 ## Introduction
 This has Bezier and B-spline curve (1-D) and surface (2-D) implementations in C++ using OpenCV, and also CUDA implementations.
 
+## Building
+This uses vcpkg to manage dependencies. You can install vcpkg and then run `vcpkg install` in the top directory of this project (the one containing this readme) to build dependencies. Then, there are different ways to tell cmake how to find the dependencies, and this currently provides a CMakePresets.json file that specifies the path to the vcpkg.cmake file using an environment variable VCPKG_ROOT. You can set this environment variable to the path to your vcpkg installation, or you can edit the CMakePresets.json file to specify the path to your vcpkg installation.
+
 ## Background and Definitions
 In this implementation, in the 1-D case, we picture the B-spline control points as defining a sequence of segments. Note that the last point in the sequence only ends a segment, it doesn't define another segment.
 
