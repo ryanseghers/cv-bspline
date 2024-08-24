@@ -98,6 +98,9 @@ set(SOURCE_FILES
 	fitCurves/fitCurves.h
 	fitCurves/fitCurves.cpp
 
+	mainMiscUtil.h
+	mainMiscUtil.cpp
+
 	main.cpp
 )
 
@@ -114,6 +117,9 @@ if(WIN32)
 
 	cudaBSplineTransform.h
 	cudaBSplineTransform.cu
+
+	ShowBSplineDistortion.h
+	ShowBSplineDistortion.cpp
     )
 endif()
 
