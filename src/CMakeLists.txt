@@ -4,25 +4,25 @@ project(cv-bspline LANGUAGES CUDA CXX VERSION 0.1.0)
 set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 7.5 is 20 series, 8.6 is 30 series, 8.9 is 40 series
-set(CMAKE_CUDA_ARCHITECTURES "75;86;89")
+if(WIN32)
+	# 7.5 is 20 series, 8.6 is 30 series, 8.9 is 40 series
+	set(CMAKE_CUDA_ARCHITECTURES "75;86;89")
 
-enable_language(CUDA)
-find_package(CUDAToolkit)
+	enable_language(CUDA)
+	find_package(CUDAToolkit)
 
-# Fix error: Target "CVRemap" requires the language dialect "CUDA20" (with compiler
-#  extensions).  But the current compiler "NVIDIA" does not support this, or
-#  CMake does not know the flags to enable it.
-set(CMAKE_CUDA_STANDARD 20)
+	# Fix error: Target "CVRemap" requires the language dialect "CUDA20" (with compiler
+	#  extensions).  But the current compiler "NVIDIA" does not support this, or
+	#  CMake does not know the flags to enable it.
+	set(CMAKE_CUDA_STANDARD 20)
 
-if(NOT DEFINED CMAKE_CUDA20_STANDARD_COMPILE_OPTION)
-  set(CMAKE_CUDA20_STANDARD_COMPILE_OPTION "")
-  set(CMAKE_CUDA20_EXTENSION_COMPILE_OPTION "")
-endif()
+	if(NOT DEFINED CMAKE_CUDA20_STANDARD_COMPILE_OPTION)
+	  set(CMAKE_CUDA20_STANDARD_COMPILE_OPTION "")
+	  set(CMAKE_CUDA20_EXTENSION_COMPILE_OPTION "")
+	endif()
 
-set(CMAKE_CUDA_FLAGS "-std=c++20")
+	set(CMAKE_CUDA_FLAGS "-std=c++20")
 
-IF (WIN32)
     # For VS instrumentation profiler
     # Enable these lines, then do a clean build, then run analyzer from exe.
     #add_link_options("/PROFILE")
@@ -95,6 +95,14 @@ set(SOURCE_FILES
 	MatWave.cpp
 	MatWave.h
 
+	fitCurves/fitCurves.h
+	fitCurves/fitCurves.cpp
+
+	main.cpp
+)
+
+if(WIN32)
+    list(APPEND SOURCE_FILES
 	cudaUtil.h
 	cudaUtil.cu
 
@@ -106,14 +114,15 @@ set(SOURCE_FILES
 
 	cudaBSplineTransform.h
 	cudaBSplineTransform.cu
-
-	fitCurves/fitCurves.h
-	fitCurves/fitCurves.cpp
-
-	main.cpp
-)
+    )
+endif()
 
 add_executable (cv-bspline-main ${SOURCE_FILES})
-set_property(TARGET cv-bspline-main PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 target_include_directories(cv-bspline-main PUBLIC ".")
-target_link_libraries(cv-bspline-main PUBLIC ${OpenCV_LIBS} fmt::fmt CUDA::cudart_static CppOpenCVUtilLib CvPlot::CvPlot Boost::filesystem Boost::iostreams)
+
+target_link_libraries(cv-bspline-main PRIVATE ${OpenCV_LIBS} fmt::fmt CppOpenCVUtilLib CvPlot::CvPlot Boost::filesystem Boost::iostreams)
+
+if(WIN32)
+	set_property(TARGET cv-bspline-main PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+	target_link_libraries(cv-bspline-main PRIVATE CUDA::cudart_static)
+endif()

@@ -20,10 +20,13 @@
 #include "BSplineGrid.h"
 #include "MatWave.h"
 #include "ImageTransformBSpline.h"
+
+#ifdef _WIN32
 #include "cudaUtil.h"
 #include "cudaBSplineCoeffs.h"
 #include "cudaBSplineEval.h"
 #include "cudaBSplineTransform.h"
+#endif
 
 using namespace std;
 using namespace std::chrono;
@@ -836,6 +839,8 @@ void mouseCallbackFitting(int event, int x, int y, int flags, void* userdata)
     }
 }
 
+#ifdef _WIN32
+
 // CudaMat is just a wrapper, no memory ownership.
 template <typename T>
 CudaMat2<T> CreateCudaMat(cv::Mat mat)
@@ -1517,6 +1522,7 @@ void trySpringMeshDeform()
     saveDebugImage(dst, "transformed");
 }
 
+#endif
 
 int main()
 {
@@ -1529,7 +1535,7 @@ int main()
     //tryBSplineGridDeformImage();
     //benchTransformImageBgra();
     //benchThroughputTransformImageBgra();
-    showImageTransformBSpline();
+    //showImageTransformBSpline();
     return 0;
 #endif
 
@@ -1559,7 +1565,7 @@ int main()
     //tryBezierCurveFit();
     //tryBSplineCurveFit();
 
-    showImageTransformBSpline();
+    //showImageTransformBSpline();
 
     fmt::print("Done.\n");
     return 0;
