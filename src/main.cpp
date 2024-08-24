@@ -3,12 +3,14 @@
 #include <ctime>
 #include <future>
 #include <optional>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 #include <fmt/core.h>
 #include <opencv2/opencv.hpp>
 
 #include "ImageUtil.h"
-
 #include "CvPlotUtil.h"
 #include "MiscUtil.h"
 #include "BSplineMiscUtil.h"
@@ -546,6 +548,48 @@ void tryMatWave()
     }
 }
 
+std::vector<float> loadTransformParameters(const std::string& filename) 
+{
+    std::ifstream file(filename);
+    std::vector<float> parameters;
+    std::string line;
+
+    if (!file.is_open()) 
+    {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return parameters;
+    }
+
+    while (std::getline(file, line)) 
+    {
+        size_t idx = line.find("TransformParameters");
+
+        if ((idx != std::string::npos) && (idx < 3))
+        {
+            string restOfLine = line.substr(idx + 19);
+            std::istringstream iss(restOfLine);
+
+            float value;
+            while (iss >> value)
+            {
+                parameters.push_back(value);
+            }
+
+            break;
+        }
+    }
+
+    file.close();
+    return parameters;
+}
+
+void tryLoadBSplineParams()
+{
+    string path = "C:/Projects/2024-07-12-deformable-registration/TG_132_Test7/TransformParameters.1.txt";
+    vector<float> params = loadTransformParameters(path);
+    fmt::print("Params: {}\n", params.size());
+}
+
 int main()
 {
     fmt::print("Starting...\n");
@@ -587,7 +631,8 @@ int main()
     //tryBezierCurveFit();
     //tryBSplineCurveFit();
 
-    showImageTransformBSpline(TestImagePath);
+    //showImageTransformBSpline(TestImagePath);
+    tryLoadBSplineParams();
 
     fmt::print("Done.\n");
     return 0;
