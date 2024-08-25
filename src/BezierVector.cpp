@@ -1,4 +1,3 @@
-#include <immintrin.h>
 #include "BezierVector.h"
 #include "BezierUtil.h"
 #include "fitCurves/fitCurves.h"
@@ -76,13 +75,13 @@ namespace CvImageDeform
     // Eval the bezier surface at a single point.
     // controlPoints is uniform 4x4 matrix
     // u,v are [0,1]
-    cv::Point3f evalBezierSurfaceCubicPoint(const vector<vector<cv::Point3f>>& controlPoints, float u, float v) 
+    cv::Point3f evalBezierSurfaceCubicPoint(const vector<vector<cv::Point3f>>& controlPoints, float u, float v)
     {
         cv::Point3f point(0, 0, 0);
 
-        for (int i = 0; i < 4; ++i) 
+        for (int i = 0; i < 4; ++i)
         {
-            for (int j = 0; j < 4; ++j) 
+            for (int j = 0; j < 4; ++j)
             {
                 point += bezierPolyTerm(i, u) * bezierPolyTerm(j, v) * controlPoints[i][j];
             }
@@ -91,7 +90,7 @@ namespace CvImageDeform
         return point;
     }
 
-    cv::Point3f evalBezierSurfaceCubicPointUnrolled(const vector<vector<cv::Point3f>>& controlPoints, float u, float v) 
+    cv::Point3f evalBezierSurfaceCubicPointUnrolled(const vector<vector<cv::Point3f>>& controlPoints, float u, float v)
     {
         float x = 0.0f;
         float y = 0.0f;
@@ -103,7 +102,7 @@ namespace CvImageDeform
         float v21 = 3 * v * v * v1;
         float v3 = v * v * v;
 
-        for (int i = 0; i < 4; ++i) 
+        for (int i = 0; i < 4; ++i)
         {
             float a = bezierPolyTerm(i, u) * v13;
             x += a * controlPoints[i][0].x;

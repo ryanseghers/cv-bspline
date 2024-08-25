@@ -144,7 +144,7 @@ void tryBSplineCurveFit()
 
 void tryBezierSurface()
 {
-    vector<vector<cv::Point3f>> controlPoints = 
+    vector<vector<cv::Point3f>> controlPoints =
     {
         {cv::Point3f(0, 0, 0), cv::Point3f(1, 0, 2), cv::Point3f(2, 0, 2), cv::Point3f(3, 0, 1), },
         {cv::Point3f(0, 1, 1), cv::Point3f(1, 1, 3), cv::Point3f(2, 1, 2), cv::Point3f(3, 1, 3), },
@@ -159,7 +159,7 @@ void tryBezierSurface()
 
 vector<vector<cv::Point3f>> getExampleBSpline5x5ControlPoints()
 {
-    vector<vector<cv::Point3f>> controlPoints = 
+    vector<vector<cv::Point3f>> controlPoints =
     {
         {cv::Point3f(10, 0, 0), cv::Point3f(11, 0, 2), cv::Point3f(12, 0, 2), cv::Point3f(13, 0, 1), cv::Point3f(14, 0, 2), },
         {cv::Point3f(10, 1, 1), cv::Point3f(11, 1, 3), cv::Point3f(12, 1, 2), cv::Point3f(13, 1, 3), cv::Point3f(14, 1, 2), },
@@ -173,7 +173,7 @@ vector<vector<cv::Point3f>> getExampleBSpline5x5ControlPoints()
 
 vector<vector<cv::Point3f>> getExampleBSpline4x4ControlPoints()
 {
-    vector<vector<cv::Point3f>> controlPoints = 
+    vector<vector<cv::Point3f>> controlPoints =
     {
         {cv::Point3f(10, 0, 0), cv::Point3f(11, 0, 2), cv::Point3f(12, 0, 2), cv::Point3f(13, 0, 1), },
         {cv::Point3f(10, 1, 1), cv::Point3f(11, 1, 3), cv::Point3f(12, 1, 2), cv::Point3f(13, 1, 3), },
@@ -206,7 +206,7 @@ void tryBSplineSurface()
 
 void tryComputeBezierControlPoints()
 {
-    vector<vector<cv::Point3f>> controlPoints = 
+    vector<vector<cv::Point3f>> controlPoints =
     {
         {cv::Point3f(10, 0, 0), cv::Point3f(11, 0, 2), cv::Point3f(12, 0, 1) },
         {cv::Point3f(10, 1, 1), cv::Point3f(11, 1, 3), cv::Point3f(12, 1, 2) },
@@ -226,7 +226,7 @@ void tryComputeBezierControlPoints()
 
 void tryBezierSurfacePoint()
 {
-    vector<vector<cv::Point3f>> controlPoints = 
+    vector<vector<cv::Point3f>> controlPoints =
     {
         {cv::Point3f(0, 0, 0), cv::Point3f(1, 0, 2), cv::Point3f(2, 0, 2), cv::Point3f(3, 0, 1), },
         {cv::Point3f(0, 1, 1), cv::Point3f(1, 1, 3), cv::Point3f(2, 1, 2), cv::Point3f(3, 1, 3), },
@@ -240,18 +240,18 @@ void tryBezierSurfacePoint()
     cv::Point3f pt = evalBezierSurfaceCubicPointMat(controlMatZs, 0.1f, 0.2f);
     fmt::print("Point: {0}, {1}, {2}\n", pt.x, pt.y, pt.z);
 
-    // simd
-    pt = evalBezierSurfaceCubicPointMatSimd(controlMatZs, 0.1f, 0.2f);
-    fmt::print("Point: {0}, {1}, {2}\n", pt.x, pt.y, pt.z);
+//     // simd
+//     pt = evalBezierSurfaceCubicPointMatSimd(controlMatZs, 0.1f, 0.2f);
+//     fmt::print("Point: {0}, {1}, {2}\n", pt.x, pt.y, pt.z);
 
-    // simd
-    pt = evalBezierSurfaceCubicPointMatSimd2(controlMatZs, 0.1f, 0.2f);
-    fmt::print("Point: {0}, {1}, {2}\n", pt.x, pt.y, pt.z);
+//     // simd
+//     pt = evalBezierSurfaceCubicPointMatSimd2(controlMatZs, 0.1f, 0.2f);
+//     fmt::print("Point: {0}, {1}, {2}\n", pt.x, pt.y, pt.z);
 }
 
 void tryBezierSurfaceMat()
 {
-    vector<vector<cv::Point3f>> controlPoints = 
+    vector<vector<cv::Point3f>> controlPoints =
     {
         {cv::Point3f(0, 0, 0), cv::Point3f(1, 0, 2), cv::Point3f(2, 0, 2), cv::Point3f(3, 0, 1), },
         {cv::Point3f(0, 1, 1), cv::Point3f(1, 1, 3), cv::Point3f(2, 1, 2), cv::Point3f(3, 1, 3), },
@@ -265,7 +265,7 @@ void tryBezierSurfaceMat()
     cv::Mat evalMat;
     int pointsDim = 10;
     evalMat.create(pointsDim, pointsDim, CV_32FC3);
-    evalBezierSurfaceCubicMatAvx(controlMatZs, 10, 0.0f, 0.0f, evalMat);
+    //evalBezierSurfaceCubicMatAvx(controlMatZs, 10, 0.0f, 0.0f, evalMat);
     dumpMat("Bezier Surface", evalMat);
     gnuPlot3dSurfaceMat("Bezier Surface", evalMat);
 }
@@ -358,20 +358,20 @@ void try3fMat()
     dumpMat("m1", m1);
 }
 
-cv::Mat createMatWithColumnIndices(int rows, int cols) 
+cv::Mat createMatWithColumnIndices(int rows, int cols)
 {
     cv::Mat mat(rows, cols, CV_32F);
-    for (int i = 0; i < mat.cols; ++i) 
+    for (int i = 0; i < mat.cols; ++i)
     {
         mat.col(i) = i;
     }
     return mat;
 }
 
-cv::Mat createMatWithRowIndices(int rows, int cols) 
+cv::Mat createMatWithRowIndices(int rows, int cols)
 {
     cv::Mat mat(rows, cols, CV_32F);
-    for (int i = 0; i < mat.rows; ++i) 
+    for (int i = 0; i < mat.rows; ++i)
     {
         mat.row(i) = i;
     }
@@ -421,7 +421,7 @@ void renderDistortedImage(cv::Mat& img, const cv::Mat& xcoords, const cv::Mat& y
     std::vector<cv::Mat> channels(3);
     cv::split(evalMat, channels);
     cv::Mat evalMatZs = channels[2];
-     
+
     // remap takes x coordinate to sample
     cv::Mat xmap = xcoords + evalMatZs;
     cv::Mat dest;
@@ -548,19 +548,19 @@ void tryMatWave()
     }
 }
 
-std::vector<float> loadTransformParameters(const std::string& filename) 
+std::vector<float> loadTransformParameters(const std::string& filename)
 {
     std::ifstream file(filename);
     std::vector<float> parameters;
     std::string line;
 
-    if (!file.is_open()) 
+    if (!file.is_open())
     {
         std::cerr << "Error opening file: " << filename << std::endl;
         return parameters;
     }
 
-    while (std::getline(file, line)) 
+    while (std::getline(file, line))
     {
         size_t idx = line.find("TransformParameters");
 
@@ -585,7 +585,11 @@ std::vector<float> loadTransformParameters(const std::string& filename)
 
 void tryLoadBSplineParams()
 {
+#ifdef _WIN32
     string path = "C:/Projects/2024-07-12-deformable-registration/TG_132_Test7/TransformParameters.1.txt";
+#else
+    string path = "/Users/ryanseghers/tmp/TransformParameters.1.txt";
+#endif
     vector<float> params = loadTransformParameters(path);
     fmt::print("Params: {}\n", params.size());
 }
@@ -601,8 +605,10 @@ int main()
     //tryBSplineGridDeformImage();
     //benchTransformImageBgra();
     //benchThroughputTransformImageBgra();
+#ifdef _WIN32
     showImageTransformBSpline(TestImagePath);
     return 0;
+#endif
 #endif
 
     //tryCvPlot();

@@ -35,7 +35,7 @@ namespace CvImageDeform
         //    {
         //        float x = c; // uniform grid
         //        float zThis = bSplineControlPointZs.at<float>(r, c);
-        //        
+        //
         //        // By our definition of a cell there is always a next point.
         //        float zNext = bSplineControlPointZs.at<float>(r, c + 1);
 
@@ -97,7 +97,7 @@ namespace CvImageDeform
     }
 
     /**
-     * @brief 
+     * @brief
      * This can be called for fist and last cell rows, but not for first and last cell cols.
      */
     void horizontalBSplineInterp(float* bsp, int bspStride, int r, int c, float* pOut)
@@ -511,8 +511,11 @@ namespace CvImageDeform
                 cv::Rect bezierCellRoi = cv::Rect(c * 3, r * 3, 4, 4);
                 cv::Rect outputRoi = cv::Rect(c * nPointsDim, r * nPointsDim, nPointsDim, nPointsDim);
                 cv::Mat outputMatRoi = outputMat(outputRoi);
-                //evalBezierSurfaceCubicMat(bezierControlPointsZs(bezierCellRoi), nPointsDim, (float)c, (float)r, outputMatRoi);
+#ifdef _WIN32
                 evalBezierSurfaceCubicMatAvx(bezierControlPointsZs(bezierCellRoi), nPointsDim, (float)c, (float)r, outputMatRoi);
+#else
+                evalBezierSurfaceCubicMat(bezierControlPointsZs(bezierCellRoi), nPointsDim, (float)c, (float)r, outputMatRoi);
+#endif
             }
         }
     }

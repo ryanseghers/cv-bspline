@@ -1,4 +1,7 @@
+#ifdef _WIN32
 #include <immintrin.h>
+#endif
+
 #include "BezierMat.h"
 #include "BezierUtil.h"
 
@@ -10,11 +13,11 @@ namespace CvImageDeform
     {
         cv::Point3f point(0, 0, 0);
 
-        for (int i = 0; i < 4; ++i) 
+        for (int i = 0; i < 4; ++i)
         {
             float y = THIRDS[i];
 
-            for (int j = 0; j < 4; ++j) 
+            for (int j = 0; j < 4; ++j)
             {
                 float x = THIRDS[j];
                 cv::Point3f cp(x, y, controlPointsZs.at<float>(i, j));
@@ -25,7 +28,7 @@ namespace CvImageDeform
         return point;
     }
 
-    cv::Point3f evalBezierSurfaceCubicPointMatUnrolled(const cv::Mat& controlPointsZs, float u, float v) 
+    cv::Point3f evalBezierSurfaceCubicPointMatUnrolled(const cv::Mat& controlPointsZs, float u, float v)
     {
         float x = 0.0f;
         float y = 0.0f;
@@ -40,7 +43,7 @@ namespace CvImageDeform
         cv::Point3f point(0, 0, 0);
         cv::Point3f cp(0, 0, 0);
 
-        for (int i = 0; i < 4; ++i) 
+        for (int i = 0; i < 4; ++i)
         {
             float y = THIRDS[i];
             cp.y = y;
@@ -73,7 +76,7 @@ namespace CvImageDeform
         return point;
     }
 
-    cv::Point3f evalBezierSurfaceCubicPointMatUnrolled2(const cv::Mat& controlPointsZs, float u, float v) 
+    cv::Point3f evalBezierSurfaceCubicPointMatUnrolled2(const cv::Mat& controlPointsZs, float u, float v)
     {
         float x = 0.0f;
         float y = 0.0f;
@@ -85,7 +88,7 @@ namespace CvImageDeform
         float v21 = 3 * v * v * v1;
         float v3 = v * v * v;
 
-        for (int i = 0; i < 4; ++i) 
+        for (int i = 0; i < 4; ++i)
         {
             const float* pz = controlPointsZs.ptr<float>(i, 0);
             float tx;
@@ -124,7 +127,8 @@ namespace CvImageDeform
         return cv::Point3f(x, y, z);
     }
 
-    cv::Point3f evalBezierSurfaceCubicPointMatSimd(const cv::Mat& controlPointsZs, float u, float v) 
+#ifdef _WIN32
+    cv::Point3f evalBezierSurfaceCubicPointMatSimd(const cv::Mat& controlPointsZs, float u, float v)
     {
         __m256 xsums = _mm256_set1_ps(0.0f);
         __m256 ysums = _mm256_set1_ps(0.0f);
@@ -140,7 +144,7 @@ namespace CvImageDeform
         __m256 coeffs = _mm256_set_ps(v13, v12, v21, v3, 0.0f, 0.0f, 0.0f, 0.0f);
         __m256 thirds = _mm256_set_ps(THIRDS[0], THIRDS[1], THIRDS[2], THIRDS[3], 0.0f, 0.0f, 0.0f, 0.0f);
 
-        for (int i = 0; i < 4; ++i) 
+        for (int i = 0; i < 4; ++i)
         {
             const float* pz = controlPointsZs.ptr<float>(i, 0);
             __m256 zs = _mm256_set_ps(pz[0], pz[1], pz[2], pz[3], 0.0f, 0.0f, 0.0f, 0.0f);
@@ -185,7 +189,7 @@ namespace CvImageDeform
     /**
      * @brief Horizontal sum floats.
      */
-    float hsum_avx(__m256 x) 
+    float hsum_avx(__m256 x)
     {
         __m128 vlow  = _mm256_castps256_ps128(x);
         __m128 vhigh = _mm256_extractf128_ps(x, 1);
@@ -197,7 +201,7 @@ namespace CvImageDeform
         return _mm_cvtss_f32(vlow);
     }
 
-    cv::Point3f evalBezierSurfaceCubicPointMatSimd2(const cv::Mat& controlPointsZs, float u, float v) 
+    cv::Point3f evalBezierSurfaceCubicPointMatSimd2(const cv::Mat& controlPointsZs, float u, float v)
     {
         __m256 xsums = _mm256_set1_ps(0.0f);
         __m256 ysums = _mm256_set1_ps(0.0f);
@@ -286,7 +290,7 @@ namespace CvImageDeform
     // zs2: second two rows of 4 control point Z values
     // us: the coefficient products of u and u1
     // vs: the coefficient products of v and v1
-    cv::Point3f evalBezierSurfaceCubicPointMatSimd3(const cv::Mat& controlPointsZs, float u, float v, __m256 thirds, __m256 zs1, __m256 zs2, __m256 us, __m256 vs) 
+    cv::Point3f evalBezierSurfaceCubicPointMatSimd3(const cv::Mat& controlPointsZs, float u, float v, __m256 thirds, __m256 zs1, __m256 zs2, __m256 us, __m256 vs)
     {
         __m256 xsums = _mm256_set1_ps(0.0f);
         __m256 ysums = _mm256_set1_ps(0.0f);
@@ -334,6 +338,7 @@ namespace CvImageDeform
 
         return cv::Point3f(x, y, z);
     }
+#endif
 
     // nPointsDim: each dimension, so total output points length nPointsDim^2
     // yStart: Index to start putting results into outputPoints. This will enlarge the outer (Y) vector if needed.
@@ -363,6 +368,7 @@ namespace CvImageDeform
         }
     }
 
+#ifdef _WIN32
     // nPointsDim: each dimension, so total output points length nPointsDim^2
     // yStart: Index to start putting results into outputPoints. This will enlarge the outer (Y) vector if needed.
     // outputMat: cv::Point3f
@@ -453,4 +459,5 @@ namespace CvImageDeform
             }
         }
     }
+    #endif
 }

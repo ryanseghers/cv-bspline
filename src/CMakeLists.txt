@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required (VERSION 3.20 FATAL_ERROR)
-project(cv-bspline LANGUAGES CUDA CXX VERSION 0.1.0)
+project(cv-bspline LANGUAGES CXX VERSION 0.1.0)
 
 set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -85,13 +85,13 @@ set(SOURCE_FILES
 
 	GnuPlotUtil.cpp
 	GnuPlotUtil.h
-	
+
 	BSplineMiscUtil.cpp
 	BSplineMiscUtil.h
 
 	ImageTransformBSpline.h
 	ImageTransformBSpline.cpp
-	
+
 	MatWave.cpp
 	MatWave.h
 
