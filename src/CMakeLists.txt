@@ -65,6 +65,9 @@ set(SOURCE_FILES
 	BezierMat.cpp
 	BezierMat.h
 
+    BezierMat3d.cpp
+	BezierMat3d.h
+
 	BezierUtil.cpp
 	BezierUtil.h
 

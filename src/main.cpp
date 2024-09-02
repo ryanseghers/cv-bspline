@@ -157,6 +157,25 @@ void tryBezierSurface()
     gnuPlot3dSurface("Bezier Surface", evalPoints);
 }
 
+void tryBezierVolume()
+{
+    int dims[] = {4, 4, 4};
+    cv::Mat bzc(3, dims, CV_32F);
+
+    // Print the dimensions and type of the Mat
+    std::cout << "Dimensions: " << bzc.dims << std::endl;
+    std::cout << "Size: " << bzc.size << std::endl;
+    std::cout << "Channels: " << bzc.channels() << std::endl;
+    std::cout << "Type: " << cv::typeToString(bzc.type()) << std::endl;
+
+    // cv::Mat bzCpts(4, 4, 4, CV_32F);
+    // bzCpts = 0.0f;
+
+    // vector<vector<cv::Point3f>> evalPoints;
+    // evalBezierSurfaceCubic(controlPoints, 10, 0, evalPoints);
+    // gnuPlot3dSurface("Bezier Surface", evalPoints);
+}
+
 vector<vector<cv::Point3f>> getExampleBSpline5x5ControlPoints()
 {
     vector<vector<cv::Point3f>> controlPoints =
@@ -638,7 +657,9 @@ int main()
     //tryBSplineCurveFit();
 
     //showImageTransformBSpline(TestImagePath);
-    tryLoadBSplineParams();
+    //tryLoadBSplineParams();
+
+    tryBezierVolume();
 
     fmt::print("Done.\n");
     return 0;
