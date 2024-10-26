@@ -4,6 +4,8 @@ C++ OpenCV Bezier and B-Spline Library
 ## Introduction
 This has Bezier and B-spline curve (1-D) and surface (2-D) implementations in C++ using OpenCV, and also CUDA implementations.
 
+Most of the code in here computes Bezier control points from the B-spline control points, and then evaluate the Bezier curves from those control points. However I recently learned that you can do "direct B-spline evaluation using the basis function" and that is more efficient and so I have started to implement that as well, see BSplineBasis.h/cpp.
+
 ## Basics
 The Bezier curve function computes points (x,y) as a parametric function (t from 0.0 to 1.0) of four control points. At t=0 the output point is the first control point, and at t=1 the output point is the final control point. The curve doesn't intersect the two middle control points.
 

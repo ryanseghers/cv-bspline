@@ -23,6 +23,7 @@
 #include "MatWave.h"
 #include "ImageTransformBSpline.h"
 #include "mainMiscUtil.h"
+#include "BSplineBasis.h"
 
 #ifdef _WIN32
 #include "ShowBSplineDistortion.h"
@@ -38,6 +39,12 @@ using namespace CppOpenCVUtil;
 using namespace CvImageDeform;
 
 const std::string TestImagePath = "Z:/Camera/Pictures/2023/2023-09-14 Dan Marmot Lake/PXL_20230914_161024366.jpg";
+
+#ifdef _WIN32
+const string DeformBSplineParamsFile = "C:/Projects/2024-07-12-deformable-registration/TG_132_Test7/TransformParameters.1.txt";
+#else
+const string DeformBSplineParamsFile = "/Users/ryanseghers/tmp/TransformParameters.1.txt";
+#endif
 
 // don't want to depend on windows just for this
 const int screenWidth = 2560;
@@ -74,6 +81,92 @@ void tryBSplineCurve()
     auto evalPoints = evalBSplineCurveCubic(points, 100);
     cv::Mat plotImg = plotPointsAndCurve("B-spline Points", points, evalPoints);
     saveDebugImage(plotImg, "b-spline-points");
+}
+
+void tryBSplineCurveBasis()
+{
+    // 1-d mat for b-spline control points
+    vector<float> fcpts = { 0, 2, 2, 1, 1, 2, 0, 0, 0 };
+    cv::Mat cpts(9, 1, CV_32F);
+    
+    for (int i = 0; i < fcpts.size(); i++)
+    {
+        cpts.at<float>(i, 0) = fcpts[i];
+    }
+
+    vector<cv::Point2f> evalPoints;
+
+    for (int i = 0; i < 100; ++i)
+    {
+        float t = (float)i / 100.0f * (fcpts.size() - 1);
+        float z = evaluateBSpline1d(cpts, t);
+        evalPoints.push_back(cv::Point2f(t, z));
+    }
+
+    // points for plot
+    cv::Mat plotImg = plotPointsAndCurve("B-spline Points", fcpts, evalPoints);
+    saveDebugImage(plotImg, "b-spline-points");
+}
+
+void tryBSplineCurveBasisFit()
+{
+    // 1-d mat for b-spline control points
+    vector<float> fcpts = { 0, 2, 2, 1, 1, 2, 0, 0, 0 };
+    int n = (int)fcpts.size();
+    cv::Mat cpts(n, 1, CV_32F);
+
+    for (int i = 0; i < n; i++)
+    {
+        cpts.at<float>(i, 0) = fcpts[i];
+    }
+
+    // Eval the b-spline into higher res points
+    vector<cv::Point2f> evalPoints;
+
+    for (int i = 0; i < 100; ++i)
+    {
+        float t = (float)i / 100.0f * (n - 1);
+        float z = evaluateBSpline1d(cpts, t);
+        evalPoints.push_back(cv::Point2f(t, z));
+    }
+
+    // points for plot
+    cv::Mat plotImg = plotPointsAndCurve("B-spline Points", fcpts, evalPoints);
+    saveDebugImage(plotImg, "b-spline-points");
+
+    // Fit the b-spline.
+    // First try just using eval points as control points.
+    vector<cv::Point2f> fittedPoints;
+
+    for (int i = 0; i < n; i++)
+    {
+        float idxf = (float)i / (n - 1) * (evalPoints.size() - 1) + 0.5f;
+        int idx = (int)idxf;
+        fittedPoints.push_back(evalPoints[idx]);
+    }
+
+    // Put control points into the mat
+    for (int i = 0; i < n; i++)
+    {
+        cpts.at<float>(i, 0) = fittedPoints[i].y;
+    }
+
+    // Eval using the new ("fitted") control points
+    vector<cv::Point2f> evalFitPoints;
+
+    for (int i = 0; i < 100; ++i)
+    {
+        float t = (float)i / 100.0f * (n - 1);
+        float z = evaluateBSpline1d(cpts, t);
+        evalFitPoints.push_back(cv::Point2f(t, z));
+    }
+
+    // Plots
+    plotImg = plotPointsAndCurve("B-spline From Fitted Control Points", fittedPoints, evalFitPoints);
+    saveDebugImage(plotImg, "b-spline-fitted");
+
+    plotImg = plotTwoCurves("Original vs Fitted B-spline", evalPoints, evalFitPoints);
+    saveDebugImage(plotImg, "b-spline-fitted-vs-orig");
 }
 
 void tryBezierCurveFit()
@@ -567,6 +660,7 @@ void tryMatWave()
     }
 }
 
+// The file has them stored as a single line of floats
 std::vector<float> loadTransformParameters(const std::string& filename)
 {
     std::ifstream file(filename);
@@ -602,15 +696,107 @@ std::vector<float> loadTransformParameters(const std::string& filename)
     return parameters;
 }
 
+// The file has them stored as a single line of floats
+// But it is a 3d matrix with 3 floats per node.
+cv::Mat loadTransformParametersMat(const std::string& filename)
+{
+    cv::Mat m;
+    std::ifstream file(filename);
+    std::string line;
+
+    if (!file.is_open())
+    {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return m;
+    }
+
+    while (std::getline(file, line))
+    {
+        // Parse mat size from line like: (GridSize 35 35 32)
+        size_t idx = line.find("GridSize");
+
+        if ((idx != std::string::npos) && (idx < 3))
+        {
+            string restOfLine = line.substr(idx + 9);
+            std::istringstream iss(restOfLine);
+
+            int sizes[3];
+            iss >> sizes[0];
+            iss >> sizes[1];
+            iss >> sizes[2];
+
+            m.create(3, sizes, CV_32FC3);
+            continue;
+        }
+
+        idx = line.find("TransformParameters");
+
+        if ((idx != std::string::npos) && (idx < 3))
+        {
+            string restOfLine = line.substr(idx + 19);
+            std::istringstream iss(restOfLine);
+
+            float xc, yc, zc;
+
+            for (int zi = 0; zi < m.size[2]; ++zi)
+            {
+                for (int yi = 0; yi < m.size[1]; ++yi)
+                {
+                    for (int xi = 0; xi < m.size[0]; ++xi)
+                    {
+                        iss >> xc;
+                        iss >> yc;
+                        iss >> zc;
+                        m.at<cv::Vec3f>(xi, yi, zi) = cv::Vec3f(xc, yc, zc);
+                    }
+                }
+            }
+
+            break;
+        }
+    }
+
+    file.close();
+    return m;
+}
+
 void tryLoadBSplineParams()
 {
-#ifdef _WIN32
-    string path = "C:/Projects/2024-07-12-deformable-registration/TG_132_Test7/TransformParameters.1.txt";
-#else
-    string path = "/Users/ryanseghers/tmp/TransformParameters.1.txt";
-#endif
-    vector<float> params = loadTransformParameters(path);
+    vector<float> params = loadTransformParameters(DeformBSplineParamsFile);
     fmt::print("Params: {}\n", params.size());
+}
+
+void print3dMatInfo(const char* name, cv::Mat& m)
+{
+    std::cout << "Mat: " << name << std::endl;
+    std::cout << "Dimensions: " << m.dims << std::endl;
+    std::cout << "Size: " << m.size << std::endl;
+    std::cout << "Channels: " << m.channels() << std::endl;
+    std::cout << "Type: " << cv::typeToString(m.type()) << std::endl;
+}
+
+void tryBSplineVolume()
+{
+    int dims[] = { 2, 2, 2 };
+    cv::Mat bzc(3, dims, CV_32F);
+    bzc = 0.0f;
+
+    // Print the dimensions and type of the Mat
+    std::cout << "Dimensions: " << bzc.dims << std::endl;
+    std::cout << "Size: " << bzc.size << std::endl;
+    std::cout << "Channels: " << bzc.channels() << std::endl;
+    std::cout << "Type: " << cv::typeToString(bzc.type()) << std::endl;
+
+    float val = evaluateBSpline3d(bzc, 0.5f, 0.5f, 0.5f);
+    fmt::print("Value: {}\n", val);
+}
+
+void tryBSplineCompareToSitk()
+{
+    // Probably need to create a BSplineVolume class that also has the origin and spacing, etc, from the params file,
+    // and the function to compute (dx, dy, dz) from world coords.
+    cv::Mat bsp = loadTransformParametersMat(DeformBSplineParamsFile);
+    print3dMatInfo("BSpline", bsp);
 }
 
 int main()
@@ -633,6 +819,9 @@ int main()
     //tryCvPlot();
     //tryBezierCurve();
     //tryBSplineCurve();
+    //tryBSplineCurveBasis();
+    tryBSplineCurveBasisFit();
+
     //tryGnuPlot();
     //tryBezierSurface();
     //tryBSplineSurface();
@@ -659,7 +848,9 @@ int main()
     //showImageTransformBSpline(TestImagePath);
     //tryLoadBSplineParams();
 
-    tryBezierVolume();
+    //tryBezierVolume();
+    //tryBSplineVolume();
+    //tryBSplineCompareToSitk();
 
     fmt::print("Done.\n");
     return 0;

@@ -74,6 +74,9 @@ set(SOURCE_FILES
 	BezierVector.cpp
 	BezierVector.h
 
+	BSplineBasis.cpp
+	BSplineBasis.h
+
 	BSplineMat.cpp
 	BSplineMat.h
 

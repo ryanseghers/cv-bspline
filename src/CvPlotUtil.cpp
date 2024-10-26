@@ -1,4 +1,5 @@
 #include <vector>
+#include <optional>
 #include <opencv2/opencv.hpp>
 
 #include "CvPlotUtil.h"
@@ -18,11 +19,19 @@ namespace CvImageDeform
         }
     }
 
-    void cvPlotAddPointSeries(CvPlot::Axes& axes, const vector<cv::Point2f>& points, bool showPoints)
+    void cvPlotAddPointSeries(CvPlot::Axes& axes, const vector<cv::Point2f>& points, bool showPoints, std::optional<std::string> lineSpec = std::nullopt)
     {
         vector<float> xs, ys;
         splitPoints(points, xs, ys);
-        CvPlot::Series& series = axes.create<CvPlot::Series>(xs, ys, showPoints ? "-r" : "-b");
+
+        string finalLineSpec = showPoints ? "-r" : "-b";
+
+        if (lineSpec.has_value())
+        {
+            finalLineSpec = lineSpec.value();
+        }
+
+        CvPlot::Series& series = axes.create<CvPlot::Series>(xs, ys, finalLineSpec);
 
         if (showPoints)
         {
@@ -51,7 +60,7 @@ namespace CvImageDeform
         int drawHeight = 1024;
         int drawWidth = 1024;
 
-        // the hist image to render to and then display
+        // the image to render to and then display
         cv::Mat img;
         img.create(drawHeight, drawWidth, CV_8UC3);
 
@@ -71,6 +80,31 @@ namespace CvImageDeform
         return img;
     }
 
+    cv::Mat plotTwoCurves(const std::string& chartTitle, const std::vector<cv::Point2f>& points1, const std::vector<cv::Point2f>& points2)
+    {
+        int drawHeight = 1024;
+        int drawWidth = 1024;
+
+        // the image to render to and then display
+        cv::Mat img;
+        img.create(drawHeight, drawWidth, CV_8UC3);
+
+        auto axes = makeScatterPlotAxes(chartTitle);
+
+        if (!points1.empty())
+        {
+            cvPlotAddPointSeries(axes, points1, false, "-g");
+        }
+
+        if (!points2.empty())
+        {
+            cvPlotAddPointSeries(axes, points2, false);
+        }
+
+        img = axes.render(drawHeight, drawWidth);
+        return img;
+    }
+
     cv::Mat plotPoints(const string& chartTitle, const vector<cv::Point2f>& points)
     {
         vector<cv::Point2f> empty;
@@ -79,6 +113,19 @@ namespace CvImageDeform
 
     cv::Mat plotPointsAndCurve(const string& chartTitle, const vector<cv::Point2f>& points, const vector<cv::Point2f>& curvePoints)
     {
+        return renderPlot(chartTitle, points, curvePoints);
+    }
+
+    // For uniform points from 0 to n-1
+    cv::Mat plotPointsAndCurve(const string& chartTitle, const vector<float>& pointValues, const vector<cv::Point2f>& curvePoints)
+    {
+        vector<cv::Point2f> points;
+
+        for (int i = 0; i < pointValues.size(); i++)
+        {
+            points.push_back(cv::Point2f(i, pointValues[i]));
+        }
+
         return renderPlot(chartTitle, points, curvePoints);
     }
 
