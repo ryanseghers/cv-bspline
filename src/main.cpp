@@ -24,6 +24,7 @@
 #include "ImageTransformBSpline.h"
 #include "mainMiscUtil.h"
 #include "BSplineBasis.h"
+#include "BSplineFit1d.h"
 
 #ifdef _WIN32
 #include "ShowBSplineDistortion.h"
@@ -108,47 +109,106 @@ void tryBSplineCurveBasis()
     saveDebugImage(plotImg, "b-spline-points");
 }
 
-void tryBSplineCurveBasisFit()
+// Mean of Y values, with tolerance for being off the ends.
+float slidingMean(const vector<cv::Point2f>& values, int start, int end)
 {
-    // 1-d mat for b-spline control points
-    vector<float> fcpts = { 0, 2, 2, 1, 1, 2, 0, 0, 0 };
-    int n = (int)fcpts.size();
-    cv::Mat cpts(n, 1, CV_32F);
+    float sum = 0.0f;
+    int n = 0;
 
-    for (int i = 0; i < n; i++)
+    for (int i = start; i < end; ++i)
     {
-        cpts.at<float>(i, 0) = fcpts[i];
+        if (i < 0 || i >= values.size()) continue;
+
+        // binomial weighting for center two points didn't help
+        sum += values[i].y;
+        n++;
     }
 
-    // Eval the b-spline into higher res points
+    return sum / n;
+}
+
+/**
+ * @brief Fit a cubic B-spline curve to a set of target points.
+ * The number of control points is equal to the number of target points.
+ * @param targetPoints - The points to fit to.
+ * @param cpts - Control points (output). This needs to already be allocated with 1 column and the same number of rows as targetPoints.
+ */
+void fitBSplineCurveBasis(vector<cv::Point2f>& targetPoints, cv::Mat& controlPointsMat)
+{
+    // Start simple, just use the target point values as the control point values,
+    // plus an adjustment for "inside" bias of b-spline curves.
+    int n = (int)targetPoints.size();
+
+    // Put control points into the mat
+    for (int i = 0; i < n; i++)
+    {
+        // Use a simple heuristic to compensate for the fact that the curve is "inside" the control points.
+        // "inside" is defined by the mean of 4 vs mean of 2.
+        float mean4 = slidingMean(targetPoints, i - 1, i + 3);
+        float mean2 = slidingMean(targetPoints, i, i + 2);
+        float delta = mean2 - mean4;
+
+        controlPointsMat.at<float>(i, 0) = targetPoints[i].y + delta;
+    }
+}
+
+vector<cv::Point2f> evalAtTargetPoints(vector<cv::Point2f>& targetPoints, cv::Mat& cpts)
+{
+    vector<cv::Point2f> evalPoints;
+    int n = (int)targetPoints.size();
+
+    for (int i = 0; i < n; ++i)
+    {
+        float t = targetPoints[i].x;
+        float z = evaluateBSpline1d(cpts, t);
+        evalPoints.push_back(cv::Point2f(t, z));
+    }
+
+    return evalPoints;
+}
+
+// Measure the error at each point and adjust control points to improve it.
+// cpts - Both input and output.
+void fitRefineBSplineCurveBasis(vector<cv::Point2f>& targetPoints, cv::Mat& cpts)
+{
+    const float gain = 1.5f; // adjust this for more or less aggressive moves to refine
+    int n = (int)targetPoints.size();
+
+    // Eval at the target points
+    vector<cv::Point2f> evalPoints = evalAtTargetPoints(targetPoints, cpts);
+
+    // Compute and adjust the control points based on the error
+    for (int i = 0; i < n; i++)
+    {
+        float delta = evalPoints[i].y - targetPoints[i].y;
+        cpts.at<float>(i, 0) -= delta * gain;
+    }
+}
+
+vector<cv::Point2f> matToPoints1d(const cv::Mat& mat)
+{
+    vector<cv::Point2f> points;
+
+    for (int i = 0; i < mat.rows; i++)
+    {
+        points.push_back(cv::Point2f(i, mat.at<float>(i, 0)));
+    }
+
+    return points;
+}
+
+// Plots for fitting iterations.
+void fitPlot(cv::Mat& origControlPoints, const vector<cv::Point2f>& targetPoints, cv::Mat& cpts, std::optional<float> yAxisMax = std::nullopt)
+{
+    // Eval the original b-spline into higher res points
+    int n = origControlPoints.size[0];
     vector<cv::Point2f> evalPoints;
 
     for (int i = 0; i < 100; ++i)
     {
         float t = (float)i / 100.0f * (n - 1);
-        float z = evaluateBSpline1d(cpts, t);
+        float z = evaluateBSpline1d(origControlPoints, t);
         evalPoints.push_back(cv::Point2f(t, z));
-    }
-
-    // points for plot
-    cv::Mat plotImg = plotPointsAndCurve("B-spline Points", fcpts, evalPoints);
-    saveDebugImage(plotImg, "b-spline-points");
-
-    // Fit the b-spline.
-    // First try just using eval points as control points.
-    vector<cv::Point2f> fittedPoints;
-
-    for (int i = 0; i < n; i++)
-    {
-        float idxf = (float)i / (n - 1) * (evalPoints.size() - 1) + 0.5f;
-        int idx = (int)idxf;
-        fittedPoints.push_back(evalPoints[idx]);
-    }
-
-    // Put control points into the mat
-    for (int i = 0; i < n; i++)
-    {
-        cpts.at<float>(i, 0) = fittedPoints[i].y;
     }
 
     // Eval using the new ("fitted") control points
@@ -162,11 +222,94 @@ void tryBSplineCurveBasisFit()
     }
 
     // Plots
-    plotImg = plotPointsAndCurve("B-spline From Fitted Control Points", fittedPoints, evalFitPoints);
-    saveDebugImage(plotImg, "b-spline-fitted");
+    vector<cv::Point2f> origControlPointsVec = matToPoints1d(origControlPoints);
+    vector<cv::Point2f> newControlPointsVec = matToPoints1d(cpts);
 
-    plotImg = plotTwoCurves("Original vs Fitted B-spline", evalPoints, evalFitPoints);
+    cv::Mat plotImg = plotTwoPointsAndCurve("B-spline From Fitted Control Points", newControlPointsVec, evalFitPoints, origControlPointsVec, evalPoints, yAxisMax);
     saveDebugImage(plotImg, "b-spline-fitted-vs-orig");
+}
+
+// Compute maxAbs and std between original and fitted control points.
+std::pair<float, float> measureError(cv::Mat& origControlPoints, cv::Mat& cpts)
+{
+    float mse = 0.0f;
+    float maxAbs = 0.0f;
+    int n = origControlPoints.size[0];
+
+    for (int i = 0; i < n; i++)
+    {
+        float val = origControlPoints.at<float>(i, 0);
+        float delta = val - cpts.at<float>(i, 0);
+        maxAbs = std::max(maxAbs, std::abs(delta));
+        mse += delta * delta;
+    }
+
+    auto pair = std::make_pair(maxAbs, mse / n);
+    return pair;
+}
+
+void tryBSplineCurveBasisFit()
+{
+    const float yAxisMax = 4.2f;
+
+    // 1-d mat for b-spline control points
+    //vector<float> fcpts = { 0, 2, 2, 1, 1, 2, 0, 0, 0 };
+    vector<float> fcpts = { 0, 0, 0, 0, 4, 0, 0, 0, 0 };
+    int n = (int)fcpts.size();
+    cv::Mat origControlPoints(n, 1, CV_32F);
+
+    for (int i = 0; i < n; i++)
+    {
+        origControlPoints.at<float>(i, 0) = fcpts[i];
+    }
+
+    // Eval the b-spline into higher res points
+    vector<cv::Point2f> evalPoints;
+
+    for (int i = 0; i < 100; ++i)
+    {
+        float t = (float)i / 100.0f * (n - 1);
+        float z = evaluateBSpline1d(origControlPoints, t);
+        evalPoints.push_back(cv::Point2f(t, z));
+    }
+
+    // points for plot
+    cv::Mat plotImg = plotPointsAndCurve("B-spline Points", fcpts, evalPoints, yAxisMax);
+    saveDebugImage(plotImg, "b-spline-points");
+
+    // Sample the original b-spline eval'd points to get the points to fit.
+    vector<cv::Point2f> targetPoints;
+
+    for (int i = 0; i < n; i++)
+    {
+        float idxf = (float)i / (n - 1) * (evalPoints.size() - 1) + 0.5f;
+        int idx = (int)idxf;
+        targetPoints.push_back(evalPoints[idx]);
+    }
+
+    // Show the target points
+    plotImg = plotPointsAndCurve("B-spline Target Points", targetPoints, evalPoints, yAxisMax);
+    saveDebugImage(plotImg, "b-spline-target-points");
+
+    // Copy the control points mat because we modify it in-place
+    cv::Mat cpts(n, 1, CV_32F);
+
+    // Fit the b-spline.
+    fitBSplineCurveBasis(targetPoints, cpts);
+    //fitBSplineCurveBasisLinAlg(targetPoints, cpts);
+
+    auto [maxAbs, mse] = measureError(origControlPoints, cpts);
+    fmt::println("Initial error: Max: {:.2f}, mse: {:.4f}", maxAbs, mse);
+    fitPlot(origControlPoints, targetPoints, cpts, yAxisMax);
+
+    // Cycles of refinement
+    for (int i = 0; i < 5; i++)
+    {
+        fitRefineBSplineCurveBasis(targetPoints, cpts);
+        auto [maxAbs, mse] = measureError(origControlPoints, cpts);
+        fmt::println("Iter {} error: Max: {:.2f}, mse: {:.4f}", i, maxAbs, mse);
+        fitPlot(origControlPoints, targetPoints, cpts, yAxisMax);
+    }
 }
 
 void tryBezierCurveFit()
@@ -216,8 +359,8 @@ void tryBSplineCurveFit()
     inputPoints.push_back(cv::Point2f(x++, 3.0f));
     inputPoints.push_back(cv::Point2f(x++, 1.0f));
     inputPoints.push_back(cv::Point2f(x++, 1.0f));
-    inputPoints.push_back(cv::Point2f(x++, 6.0f));
-    inputPoints.push_back(cv::Point2f(x++, -1.0f));
+    inputPoints.push_back(cv::Point2f(x++, 4.0f));
+    inputPoints.push_back(cv::Point2f(x++, 2.0f));
     inputPoints.push_back(cv::Point2f(x++, 1.0f));
     inputPoints.push_back(cv::Point2f(x++, 2.0f));
     inputPoints.push_back(cv::Point2f(x++, 1.0f));

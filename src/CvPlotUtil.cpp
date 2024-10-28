@@ -43,7 +43,7 @@ namespace CvImageDeform
         series.setLineWidth(1);
     }
 
-    CvPlot::Axes makeScatterPlotAxes(const string& chartTitle)
+    CvPlot::Axes makeScatterPlotAxes(const string& chartTitle, std::optional<float> yAxisMax = std::nullopt)
     {
         auto axes = CvPlot::makePlotAxes();
         axes.title(chartTitle);
@@ -52,10 +52,18 @@ namespace CvImageDeform
         axes.setXTight(false);
         axes.xLabel("X");
         axes.yLabel("Y");
+
+        if (yAxisMax.has_value())
+        {
+            axes.setYLimAuto(false);
+            auto ylimPair = std::make_pair<double, double>(0.0, yAxisMax.value());
+            axes.setYLim(ylimPair);
+        }
+
         return axes;
     }
 
-    cv::Mat renderPlot(const string& chartTitle, const vector<cv::Point2f>& points, const vector<cv::Point2f>& curvePoints)
+    cv::Mat renderPlot(const string& chartTitle, const vector<cv::Point2f>& points, const vector<cv::Point2f>& curvePoints, std::optional<float> yAxisMax = std::nullopt)
     {
         int drawHeight = 1024;
         int drawWidth = 1024;
@@ -64,7 +72,7 @@ namespace CvImageDeform
         cv::Mat img;
         img.create(drawHeight, drawWidth, CV_8UC3);
 
-        auto axes = makeScatterPlotAxes(chartTitle);
+        auto axes = makeScatterPlotAxes(chartTitle, yAxisMax);
 
         if (!points.empty())
         {
@@ -80,7 +88,7 @@ namespace CvImageDeform
         return img;
     }
 
-    cv::Mat plotTwoCurves(const std::string& chartTitle, const std::vector<cv::Point2f>& points1, const std::vector<cv::Point2f>& points2)
+    cv::Mat plotTwoCurves(const std::string& chartTitle, const std::vector<cv::Point2f>& points1, const std::vector<cv::Point2f>& points2, std::optional<float> yAxisMax)
     {
         int drawHeight = 1024;
         int drawWidth = 1024;
@@ -89,7 +97,7 @@ namespace CvImageDeform
         cv::Mat img;
         img.create(drawHeight, drawWidth, CV_8UC3);
 
-        auto axes = makeScatterPlotAxes(chartTitle);
+        auto axes = makeScatterPlotAxes(chartTitle, yAxisMax);
 
         if (!points1.empty())
         {
@@ -111,13 +119,13 @@ namespace CvImageDeform
         return renderPlot(chartTitle, points, empty);
     }
 
-    cv::Mat plotPointsAndCurve(const string& chartTitle, const vector<cv::Point2f>& points, const vector<cv::Point2f>& curvePoints)
+    cv::Mat plotPointsAndCurve(const string& chartTitle, const vector<cv::Point2f>& points, const vector<cv::Point2f>& curvePoints, std::optional<float> yAxisMax)
     {
-        return renderPlot(chartTitle, points, curvePoints);
+        return renderPlot(chartTitle, points, curvePoints, yAxisMax);
     }
 
     // For uniform points from 0 to n-1
-    cv::Mat plotPointsAndCurve(const string& chartTitle, const vector<float>& pointValues, const vector<cv::Point2f>& curvePoints)
+    cv::Mat plotPointsAndCurve(const string& chartTitle, const vector<float>& pointValues, const vector<cv::Point2f>& curvePoints, std::optional<float> yAxisMax)
     {
         vector<cv::Point2f> points;
 
@@ -126,7 +134,44 @@ namespace CvImageDeform
             points.push_back(cv::Point2f(i, pointValues[i]));
         }
 
-        return renderPlot(chartTitle, points, curvePoints);
+        return renderPlot(chartTitle, points, curvePoints, yAxisMax);
+    }
+
+    // Plot two pairs of markers and curve points.
+    cv::Mat plotTwoPointsAndCurve(const string& chartTitle, vector<cv::Point2f>& discretePoints1, vector<cv::Point2f>& curvePoints1,
+        vector<cv::Point2f>& discretePoints2, vector<cv::Point2f>& curvePoints2, std::optional<float> yAxisMax)
+    {
+        int drawHeight = 1024;
+        int drawWidth = 1024;
+
+        cv::Mat img;
+        img.create(drawHeight, drawWidth, CV_8UC3);
+
+        auto axes = makeScatterPlotAxes(chartTitle, yAxisMax);
+
+        if (!discretePoints1.empty())
+        {
+            cvPlotAddPointSeries(axes, discretePoints1, true, "-r");
+        }
+
+        if (!curvePoints1.empty())
+        {
+            cvPlotAddPointSeries(axes, curvePoints1, false, "-r");
+        }
+
+        //if (!discretePoints2.empty())
+        //{
+        //    cvPlotAddPointSeries(axes, discretePoints2, true, "-b");
+        //}
+
+        if (!curvePoints2.empty())
+        {
+            cvPlotAddPointSeries(axes, curvePoints2, false, "-b");
+        }
+
+        img = axes.render(drawHeight, drawWidth);
+        return img;
+
     }
 
     void tryCvPlot()

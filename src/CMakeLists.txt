@@ -80,6 +80,9 @@ set(SOURCE_FILES
 	BSplineMat.cpp
 	BSplineMat.h
 
+	BSplineFit1d.cpp
+	BSplineFit1d.h
+
 	BSplineVector.cpp
 	BSplineVector.h
 
